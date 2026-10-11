@@ -17,5 +17,8 @@
   "gui.ae2modularcells.display_mode.scientific": "Scientific notation",
   "gui.ae2modularcells.display_mode.engineering": "Engineering notation",
   "gui.ae2modularcells.display_mode.tooltip": "Count mode:",
-  "config.jade.plugin_ae2modularcells.module_structure": "Energy Module Structure"
+  "config.jade.plugin_ae2modularcells.module_structure": "Energy Module Structure",
+  "msg.ae2modularcells.no_component_target": "No component slot to install into or replace",
+  "msg.ae2modularcells.component_inserted": "Installed %s",
+  "msg.ae2modularcells.component_replaced": "Replaced with %s (removed %s)"
 }

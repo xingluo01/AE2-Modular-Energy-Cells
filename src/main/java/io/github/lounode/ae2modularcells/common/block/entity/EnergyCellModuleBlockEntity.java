@@ -30,6 +30,7 @@ import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.ModularCellConstants;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
+import io.github.lounode.ae2modularcells.common.StorageComponentTier;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage;
 import io.github.lounode.ae2modularcells.common.inventory.ComponentInsertOnlyItemHandler;
@@ -615,7 +616,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         if (this.corePos == null) {
             return this;
         }
-        if (this.level != null && this.level.getBlockEntity(this.corePos) instanceof EnergyCellModuleBlockEntity core) {
+        // isLoaded 是必须的，不是「顺手加一道」：Level#getBlockEntity 会经 getChunkAt 同步加载区块，
+        // 而这条方法在终端菜单每拍的同步里（isFormed/stats/storedEnergy/rows）都会被调到。
+        // 核心所在区块未加载时（玩家走远、区块被卸），未加守卫的版本会在主线程上反复发起区块加载
+        // ——系统就会在「保存世界」那一步停在原地不再返回（日志停在 Saving worlds，无崩溃产物）。
+        if (this.level == null || !this.level.isLoaded(this.corePos)) {
+            return null;
+        }
+        if (this.level.getBlockEntity(this.corePos) instanceof EnergyCellModuleBlockEntity core) {
             return core;
         }
         return null;
@@ -642,7 +650,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         }
         var core = resolveCore();
         if (core == null) {
-            return index == 0 ? this : null;
+            // 配了核心却拿不到（区块未加载、或已被拆）：不能把自己当下标 0 的模块交出去——
+            // 那会把槽位指到非核心块身上（组件有可能被装进别的一块）。未配核心时 resolveCore 返回自己，
+            // 走不到这里。
+            return null;
         }
         var origin = core.structureOrigin;
         int side = core.ownStats.side();
@@ -655,7 +666,127 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         }
         var cursor = new BlockPos.MutableBlockPos();
         layout.modulePos(index, cursor);
+        // 与 resolveCore 同口径：查方块实体前先问区块在不在场，不让查询变成一次区块加载。
+        if (!level.isLoaded(cursor)) {
+            return null;
+        }
         return level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module ? module : null;
+    }
+
+    /**
+     * 整段里每一块的方块实体（按 {@link MultiblockScanner.Layout#modulePos} 的顺序，含核心自己）。
+     *
+     * <p>核心不在场（未加载、已被拆）时返回空表：调用方（手势）宁可不做事，也不要在半知半解的结构上动手。</p>
+     */
+    public List<EnergyCellModuleBlockEntity> structureModules() {
+        var core = resolveCore();
+        if (core == null) {
+            return List.of();
+        }
+        int count = Math.max(1, core.ownStats.moduleCount());
+        var out = new ArrayList<EnergyCellModuleBlockEntity>(count);
+        for (int index = 0; index < count; index++) {
+            var module = core.moduleAt(index);
+            if (module != null) {
+                out.add(module);
+            }
+        }
+        return out;
+    }
+
+    /** 一次组件装入/替换的结果：有没有动手，以及被换下来的那一件（装入时为空）。 */
+    public record InstallResult(boolean changed, ItemStack replaced) {
+
+        static InstallResult inserted() {
+            return new InstallResult(true, ItemStack.EMPTY);
+        }
+
+        static InstallResult replaced(ItemStack old) {
+            return new InstallResult(true, old);
+        }
+    }
+
+    /**
+     * 整段里找一个能下手的组件槽，把手上的组件装进去或换出来。
+     *
+     * <p>优先级（与需求一致）：<b>先填空槽</b>，没有空槽再找<b>同种、更低档</b>的组件换掉，最后才找
+     * <b>另一种、同档</b>的组件。前两轮都按 {@link #structureModules()} 的顺序（从核心起），所以同一段结构里
+     * 反复用这个手势，换掉的是「排在最前面」的那一件，行为可预测。</p>
+     *
+     * <p>要求结构成型：未成型时组件按块各算各的，整段扫描本就无意义（与 GUI 打不开同口径）。
+     * 返回 {@code null} 表示「没动手」，调用方据此给玩家一句提示。</p>
+     */
+    @Nullable
+    public InstallResult installComponent(ItemStack held) {
+        if (held.isEmpty() || !isFormed()) {
+            return null;
+        }
+        var heldTier = StorageComponents.tierOf(held);
+        if (heldTier == null) {
+            // 认不出档位就不动：没有标尺就无法判断「更低档」与「同档另一种」。
+            return null;
+        }
+        boolean heldIsCapacity = StorageComponents.isCapacityComponent(held);
+        var modules = structureModules();
+
+        // 第一轮：空槽直接装。
+        for (var module : modules) {
+            int slots = module.components.size();
+            for (int slot = 0; slot < slots; slot++) {
+                if (module.components.getStackInSlot(slot).isEmpty()) {
+                    module.components.setItemDirect(slot, held.copyWithCount(1));
+                    return InstallResult.inserted();
+                }
+            }
+        }
+
+        // 第二轮：同种、更低档（多件低档时取排在最前面的那一件）。
+        var lower = findSlot(modules, heldIsCapacity, currentTier -> currentTier != null
+                && currentTier.ordinal() < heldTier.ordinal());
+        if (lower != null) {
+            var old = lower.module().components.getStackInSlot(lower.slot());
+            lower.module().components.setItemDirect(lower.slot(), held.copyWithCount(1));
+            return InstallResult.replaced(old);
+        }
+
+        // 第三轮：另一种类、同档（容量组件换能量组件，反过来也一样）。
+        var otherKindSameTier = findSlot(modules, !heldIsCapacity, heldTier::equals);
+        if (otherKindSameTier != null) {
+            var old = otherKindSameTier.module().components.getStackInSlot(otherKindSameTier.slot());
+            otherKindSameTier.module().components.setItemDirect(otherKindSameTier.slot(), held.copyWithCount(1));
+            return InstallResult.replaced(old);
+        }
+
+        return null;
+    }
+
+    /** 找到的槽：哪一块的哪一个槽。 */
+    private record FoundSlot(EnergyCellModuleBlockEntity module, int slot) {
+    }
+
+    /**
+     * 在整段里找第一个满足条件的槽。
+     *
+     * @param capacityKind true 表示只看容量类组件
+     * @param tierMatches  该槽里现有组件的档位要满足的条件
+     */
+    @Nullable
+    private static FoundSlot findSlot(List<EnergyCellModuleBlockEntity> modules, boolean capacityKind,
+            java.util.function.Predicate<StorageComponentTier> tierMatches) {
+        for (var module : modules) {
+            int slots = module.components.size();
+            for (int slot = 0; slot < slots; slot++) {
+                var current = module.components.getStackInSlot(slot);
+                if (current.isEmpty() || StorageComponents.isCapacityComponent(current) != capacityKind) {
+                    continue;
+                }
+                var currentTier = StorageComponents.tierOf(current);
+                if (currentTier != null && tierMatches.test(currentTier)) {
+                    return new FoundSlot(module, slot);
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -667,6 +798,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
      */
     public List<TerminalRows.Row> rows() {
         var core = resolveCore();
+        // 「配了核心却拿不到」（区块未加载）时拿自己顶替算出来的一张临时表：不写缓存——
+        // 写进去就会把自己那两行当成整段的表，等核心回来之前谁都拿不到真表。
+        boolean degraded = core == null;
         if (core == null) {
             core = this;
         }
@@ -686,8 +820,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
             int count = layout.moduleCount();
             TerminalRows.build(count, index -> tierOfModuleAt(level, layout, index), rows);
         }
-        core.rowCache = rows;
-        core.rowCacheStats = core.ownStats;
+        if (!degraded) {
+            core.rowCache = rows;
+            core.rowCacheStats = core.ownStats;
+        }
         return rows;
     }
 
@@ -696,6 +832,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
     private static EnergyCellTier tierOfModuleAt(Level level, MultiblockScanner.Layout layout, int index) {
         var cursor = new BlockPos.MutableBlockPos();
         layout.modulePos(index, cursor);
+        // 先问区块在不在：getBlockEntity/getBlockState 都会经 getChunkAt 把区块同步加载进来，
+        // 而这条链会出现在终端每拍的行表构建里。
+        if (!level.isLoaded(cursor)) {
+            return null;
+        }
         if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module) {
             return module.tier();
         }
@@ -743,11 +884,22 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         var cursor = new BlockPos.MutableBlockPos();
         for (var direction : DIRECTIONS) {
             cursor.setWithOffset(worldPosition, direction);
-            if (EnergyCellModuleBlock.isModule(level.getBlockState(cursor))) {
+            // 邻块所在区块未加载时不能问：那会变成一次同步区块加载，而这里是渲染路径（每帧算模型数据）。
+            if (level.isLoaded(cursor) && EnergyCellModuleBlock.isModule(level.getBlockState(cursor))) {
                 connections.add(direction);
             }
         }
         return connections;
+    }
+
+    /**
+     * 核心位置的区块是否已加载。
+     *
+     * <p>与「核心还在不在」是两件事：前者是区块没加载（等它回来就好），后者是方块已被拆（结构没了、
+     * 该关屏）。未加载时读不了核心，也不该去读——那会变成一次同步区块加载。</p>
+     */
+    public boolean isCoreChunkLoaded() {
+        return this.corePos == null || (this.level != null && this.level.isLoaded(this.corePos));
     }
 
     @Override

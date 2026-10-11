@@ -4,10 +4,14 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -19,6 +23,7 @@ import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
 import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
 
@@ -81,6 +86,57 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
             MenuOpener.open(EnergyModuleTerminalMenu.TYPE, player, MenuLocators.forBlockEntity(module));
         }
         return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    /**
+     * Shift + 右键：把手上的存储组件装进这一段结构，或换掉里面更次的那一件。
+     *
+     * <p>口径（与需求一致）：先填空槽，没有空槽再换「同种、更低档」的，最后才换「另一种、同档」的；
+     * 扫描顺序从核心开始，所以反复用这个手势换掉的是排在最前面的那一件。换下来的组件先塞背包，
+     * 塞不下就掉在脚边（与 AE2 拆下元件同口径）。</p>
+     *
+     * <p><b>为何在 {@code useItemOn} 里做</b>：这是 1.21 里「手上拿着东西右键方块」的入口；
+     * 且只有按着 shift（{@code isSecondaryUseActive}）才接管，不按 shift 的右键保持原样，免得抢原版手感。</p>
+     *
+     * <p><b>两端语义</b>：客户端不做任何改动，但两端都返回「已处理」——服务端真改、客户端只是不让原版
+     * 接着把这次交互当成「用物品」。它俩对「有没有可换的」判断可能差一瞬（客户端看到的是同步过来的
+     * 成型状态），差的后果只是那一下没反应，不会产生幽灵物品。</p>
+     */
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
+            Player player, InteractionHand hand, BlockHitResult hitResult) {
+        if (stack.isEmpty() || !player.isSecondaryUseActive()) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!(level.getBlockEntity(pos) instanceof EnergyCellModuleBlockEntity module)
+                || !module.isFormed()
+                || !StorageComponents.isComponent(stack)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (level.isClientSide()) {
+            return ItemInteractionResult.SUCCESS;
+        }
+
+        var result = module.installComponent(stack);
+        if (result == null) {
+            // 没有下手的地方就说一声（动作栏）：手势被吞掉而毫无反馈，玩家只会以为模组坏了。
+            player.displayClientMessage(
+                    Component.translatable("msg.ae2modularcells.no_component_target"), true);
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+
+        stack.shrink(1);
+        if (!result.replaced().isEmpty()) {
+            if (!player.getInventory().add(result.replaced())) {
+                player.drop(result.replaced(), false);
+            }
+            player.displayClientMessage(Component.translatable("msg.ae2modularcells.component_replaced",
+                    stack.getHoverName(), result.replaced().getHoverName()), true);
+        } else {
+            player.displayClientMessage(Component.translatable("msg.ae2modularcells.component_inserted",
+                    stack.getHoverName()), true);
+        }
+        return ItemInteractionResult.SUCCESS;
     }
 
     /**

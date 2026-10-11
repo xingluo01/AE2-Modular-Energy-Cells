@@ -1,5 +1,7 @@
 package io.github.lounode.ae2modularcells.common;
 
+import org.jetbrains.annotations.Nullable;
+
 import net.minecraft.world.item.ItemStack;
 
 import appeng.api.implementations.items.IStorageComponent;
@@ -63,5 +65,43 @@ public final class StorageComponents {
     /** 这个物品能不能插进组件槽：两类组件都收（各管一条公式）。 */
     public static boolean isComponent(ItemStack stack) {
         return capacityOf(stack) > 0L || energyOf(stack) > 0L;
+    }
+
+    /**
+     * 这件物品是「容量类组件」而不是「能量存储组件」。
+     *
+     * <p>两类组件互斥（{@link #capacityOf} 只认实现 {@code IStorageComponent} 的物品，{@link #energyOf}
+     * 只认 AppFlux 的 {@code core_*}），所以一个布尔量就够描述种类。</p>
+     */
+    public static boolean isCapacityComponent(ItemStack stack) {
+        return capacityOf(stack) > 0L;
+    }
+
+    /**
+     * 这件物品对应的档位：容量类按它自己的值对齐 {@link StorageComponentTier}，能量存储组件由
+     * {@link AppFluxComponents} 按注册名映射；认不出来（陌生模组的组件、数值对不上任何一档）给 {@code null}。
+     *
+     * <p><b>为什么用一张表当两种组件的公共标尺</b>：两类组件各自的数值单位不同，但档位序列是同一套
+     * （{@code 1k < 4k < … < 256m}）。手势要判「更低档」与「同档另一种」，就需要这个公共标尺；
+     * 一旦认不出档位，宁可什么都不做，也不要把没数的组件推进槽位当作「升级」。</p>
+     */
+    @Nullable
+    public static StorageComponentTier tierOf(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return null;
+        }
+        long value = capacityOf(stack);
+        if (value <= 0L) {
+            value = energyOf(stack);
+        }
+        if (value <= 0L) {
+            return null;
+        }
+        for (var tier : StorageComponentTier.values()) {
+            if (tier.capacity() == value) {
+                return tier;
+            }
+        }
+        return null;
     }
 }

@@ -218,6 +218,10 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             return;
         }
         this.rowOffset = clamped;
+        if (!this.host.isCoreChunkLoaded()) {
+            // 核心区块未加载：先把意图记下，等它回来再同步（现在去同步就是去碰未加载的区块）。
+            return;
+        }
         // 立刻按新窗口重算，别让玩家等下一拍才看到内容。
         syncFromHost();
     }
@@ -241,6 +245,10 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         }
         this.visibleRows = clamped;
         this.rowOffset = Math.max(0, Math.min(this.rowOffset, Math.max(0, this.totalRows - 1)));
+        if (!this.host.isCoreChunkLoaded()) {
+            // 同上：条数先记下，核心区块回来后再重填窗口。
+            return;
+        }
         syncFromHost();
     }
 
@@ -311,6 +319,13 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     @Override
     public void broadcastChanges() {
         if (isServerSide()) {
+            if (!this.host.isCoreChunkLoaded()) {
+                // 核心所在区块被卸（玩家走远）：这一拍不碰它——尤其是不能让它走下面的「结构没了」分支，
+                // 那会把玩家的屏关掉（区块没加载 ≠ 结构被拆）。关屏留给真正拆掉核心那条路径。
+                // 注意这一判断必须在 isFormed() 之前：isFormed() 自己就要问核心。
+                super.broadcastChanges();
+                return;
+            }
             if (!this.host.isFormed()) {
                 // 结构没了就把玩家退出去（需求 3.2）：屏幕留着只会显示一份不成立的账目。
                 // 主动关屏走 AE2 自己的写法（getPlayer().closeContainer()），不自己发关屏包。

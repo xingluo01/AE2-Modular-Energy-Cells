@@ -17,5 +17,8 @@
   "gui.ae2modularcells.display_mode.scientific": "科学计数",
   "gui.ae2modularcells.display_mode.engineering": "工程计数",
   "gui.ae2modularcells.display_mode.tooltip": "计数模式：",
-  "config.jade.plugin_ae2modularcells.module_structure": "能源模块结构"
+  "config.jade.plugin_ae2modularcells.module_structure": "能源模块结构",
+  "msg.ae2modularcells.no_component_target": "没有可装入或可替换的组件槽",
+  "msg.ae2modularcells.component_inserted": "已装入 %s",
+  "msg.ae2modularcells.component_replaced": "已替换为 %s（换下 %s）"
 }
