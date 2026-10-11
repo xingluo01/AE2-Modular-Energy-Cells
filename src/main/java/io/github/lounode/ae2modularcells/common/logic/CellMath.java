@@ -10,14 +10,14 @@ import io.github.lounode.ae2modularcells.common.ModularCellConstants;
  * 单模块容量   D    = (A + Σ S_i × k)  × (1 + b  × C)
  * 总容量       T    = Σ D_j          （每块按自己那一档的 A）
  * 单模块速率   D_v  = (V + Σ Sv_i × kv) × (1 + bv × C)
- * 总速率       T_v  = min(Σ D_vj, V_max)
- * 总输入速率   T_in = min(T_v × f_in, V_in_max)
+ * 总速率       T_v  = min(Σ D_vj, Σ V_max_j)      （上限也是逐块之和）
+ * 总输入速率   T_in = min(T_v × f_in, Σ V_in_max_j)
  * </pre>
  *
  * <p>符号：{@code A} / {@code V} 是等级的基础容量与基础速率（{@link EnergyCellTier}），{@code S_i} 是
  * 第 i 个组件的容量值（{@link io.github.lounode.ae2modularcells.common.StorageComponentTier}），
  * {@code C} 是该模块<b>实际插了</b>几个组件，{@code k} / {@code kv} / {@code b} / {@code bv} /
- * {@code f_in} 在 {@link ModularCellConstants}，{@code V_max} / {@code V_in_max} 按等级取。</p>
+ * {@code f_in} 在 {@link ModularCellConstants}，{@code V_max} / {@code V_in_max} 是每块按自己那一档提供的上限（整段取和）。</p>
  *
  * <p><b>入参契约</b>：{@code componentCapacities} 只放<b>已插入组件</b>的容量值，空槽不要补 0——不过为了
  * 不把「空槽补 0」这种写法变成陷阱，这里对 {@code ≤ 0} 的值一律按「没有组件」处理：它既不计入 C，也不
@@ -63,21 +63,21 @@ public final class CellMath {
     }
 
     /**
-     * 总传输速率：各模块速率之和，再被等级的 {@code V_max} 夹住。
+     * 总传输速率：各模块速率之和，再被「<b>各块上限之和</b>」收口：{@code T_v = min(Σ D_vj, Σ V_max_j)}。
+     *
+     * <p>上限不是「某一档的固定值」而是逐块提供量之和：每块按自己那一档出上限，整段能传多快就看这一段
+     * 一共给了多少——扩建就会真的变快，而不是一拼成立方体就顶到某个固定值。</p>
      *
      * <p>「边累加边收口」版：逐块求和时不必先攒一个与方块数同规模的数组。公式只在本类里写一次。</p>
-     *
-     * <p>混等级时段里的每块按自己的档算过自己的 {@code D_v}，求和后只能拿一个上限来夹——取「出现过的最高档」
-     * 的 {@code V_max}，理由与口径见 {@link StructureStats#tier}。</p>
      */
-    public static long totalTransferRate(EnergyCellTier tier, long summedModuleRates) {
-        return Math.min(Math.max(0L, summedModuleRates), tier.maxTransferRate());
+    public static long totalTransferRate(long summedModuleRates, long summedMaxTransferRates) {
+        return Math.min(Math.max(0L, summedModuleRates), Math.max(0L, summedMaxTransferRates));
     }
 
-    /** 总输入速率：{@code min(T_v × f_in, V_in_max)}，充能方向比放电方向更紧。 */
-    public static long totalInputRate(EnergyCellTier tier, long totalTransferRate) {
+    /** 总输入速率：{@code T_in = min(T_v × f_in, Σ V_in_max_j)}，充能方向比放电方向更紧。 */
+    public static long totalInputRate(long totalTransferRate, long summedMaxInputRates) {
         long input = Math.round(totalTransferRate * ModularCellConstants.INPUT_RATIO);
-        return Math.min(input, tier.maxInputRate());
+        return Math.min(input, Math.max(0L, summedMaxInputRates));
     }
 
     /**

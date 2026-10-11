@@ -11,9 +11,11 @@ An add-on for [Applied Energistics 2](https://github.com/AppliedEnergistics/Appl
 
 ## Features
 
+The two cap columns are **per module**: the whole structure's cap is the sum over its modules (`T_v = min(Σ D_vj, Σ V_max_j)`, `T_in = min(T_v × f_in, Σ V_in_max_j)`), so expanding the cube or upgrading tiers really does raise the throughput. Input is capped per tick, and FE can not bypass it.
+
 ### Three module tiers
 
-| Module | Base capacity A | Component slots | Base rate V | Total rate cap V_max | Total input cap V_in_max |
+| Module | Base capacity A | Component slots | Base rate V | Rate cap per module | Input cap per module |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Modular Basic Energy Unit | 200 kAE | 1 | 1 kAE/t | 16 kAE/t | 8 kAE/t |
 | Modular Dense Energy Unit | 1.6 MAE | 2 | 8 kAE/t | 128 kAE/t | 64 kAE/t |
@@ -24,7 +26,7 @@ An add-on for [Applied Energistics 2](https://github.com/AppliedEnergistics/Appl
 - A solid cube of modules (**tiers can be mixed**), from 3×3×3 up to 16×16×16.
 - Once formed, the cube is a single energy storage on the ME network: one node, one shared energy pool, cables from any face.
 - Capacity is summed per block: `D = (A + Σ S_i × k) × (1 + b × C)`, so the cube holds `T = Σ D`.
-- Transfer rate is summed per block too: `D_v = (V + Σ Sv_i × kv) × (1 + bv × C)`, capped at the tier: `T_v = min(Σ D_v, V_max)`. Charging is halved and capped again: `T_in = min(T_v × f_in, V_in_max)`.
+- Transfer rate is summed per block too: `D_v = (V + Σ Sv_i × kv) × (1 + bv × C)`, and the cap is summed as well: `T_v = min(Σ D_v, Σ V_max_j)` — expanding the cube really does raise throughput. Charging is halved and capped by the summed input cap: `T_in = min(T_v × f_in, Σ V_in_max_j)`. `T_in` is enforced on the FE / external path (per tick); the AE grid injects through AE2's own `final` `injectAEPower`, which a subtype cannot throttle.
 - Storage components do both jobs at different discounts: `k = 0.005` for capacity, `kv = 0.0001` for rate; filling slots multiplies further (`b = 0.5` capacity, `bv = 0.1` rate).
 - Break any block and the structure comes apart: the GUI closes, that block's components drop, and the remaining blocks fall back to standalone modules.
 - Unformed (or standing alone), a single block still works as an energy cell at its own capacity.

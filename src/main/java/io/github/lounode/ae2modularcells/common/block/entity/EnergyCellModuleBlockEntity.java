@@ -173,6 +173,15 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
      *
      * <p>这是「任何模块的面都能输入 FE」的落点——每个模块都暴露能力，但收到的能量都写成同一个池子。
      * 核心不在场时退回写自己那份，不至于把送进来的能量直接丢掉。</p>
+     *
+     * <p><b>入力额度</b>：整段每 tick 能收的量就是 {@code T_in = min(T_v × f_in, Σ V_in_max_j)}。以前这里不设限，
+     * 只要池子没满就照收——于是 FE（以及任何走这条路的外部注入）能直接越过那个上限，界面上却还报一个被夹死的值。
+     * 现在超出额度的部分原样退回，上限对这条路是真的。</p>
+     *
+     * <p><b>这条路盖住了谁</b>：外部电源（FE，经 AE2 的 {@code injectExternalPower}）与外力均落在这里。
+     * 但 <b>AE 网格的注入不经过本方法</b>——AE2 的 {@code EnergyService} 直接调 {@code injectAEPower}，
+     * 而那个方法在 {@code AEBasePoweredBlockEntity} 上是 {@code final}，子类无法限速。
+     * 要让网格侧也受 {@code T_in} 约束，得不再继承 AE 的 powered 基类、自己实现 {@code IAEPowerStorage}。</p>
      */
     @Override
     protected double funnelPowerIntoStorage(double power, Actionable mode) {
@@ -180,11 +189,28 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         if (core != null && core != this) {
             return core.funnelPowerIntoStorage(power, mode);
         }
-        double leftover = super.funnelPowerIntoStorage(power, mode);
+        // 输入速率对这条路是真限制（见上方 javadoc：AE 网格那条走的是上游 final 的 injectAEPower，盖不到）。
+        double allowed = Math.max(0.0, Math.min(power, remainingInputBudget()));
+        double leftover = super.funnelPowerIntoStorage(allowed, mode);
         if (mode == Actionable.MODULATE) {
-            recordInput(power - leftover, mode);
+            recordInput(allowed - leftover, mode);
         }
-        return leftover;
+        // 超出额度的部分也算「没收下」，一并还给调用方（FE 侧会把它当成拒收量报回上游）。
+        return leftover + (power - allowed);
+    }
+
+    /**
+     * 本 tick 还能收多少 AE：{@code T_in} 减去本 tick 已收。
+     *
+     * <p>没有 ticker：额度按「游戏时间对一下是不是同一 tick」现算——{@link #recordInput} 写的就是本 tick
+     * 已收量，两边共用同一个计数，所以界面上的「输入速率」永远不会超过 {@code T_in}。</p>
+     */
+    private double remainingInputBudget() {
+        long limit = stats().totalInputRate();
+        if (this.level == null || this.inputRateTick != this.level.getGameTime()) {
+            return Math.max(0L, limit);
+        }
+        return Math.max(0L, limit - this.inputRateThisTick);
     }
 
     /**
@@ -524,8 +550,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
 
         long capacity = 0L;
         long rate = 0L;
-        // 混等级：每块按自己那一档算 D 与 D_v，再把和收口；整段的「代表等级」取出现过的最高档，
-        // 只用来配 V_max / V_in_max 这两个上限（口径见 StructureStats#tier）。
+        long rateCap = 0L;
+        long inputCap = 0L;
+        // 混等级：每块按自己那一档算 D、D_v 与自己的两个上限，整段就是逐块求和（上限也是提供量之和，
+        // 不是「某一档的固定值」）。整段的「代表等级」取出现过的最高档，只用于界面文案。
         var capTier = tier;
         int tierMask = 0;
         for (int index = 0; index < count; index++) {
@@ -537,13 +565,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
             // 两侧吃的是不同的组件：容量看存储组件，速率看能量存储组件（各管一条公式）。
             capacity += CellMath.moduleCapacity(moduleTier, module.componentCapacitiesScratch());
             rate += CellMath.moduleTransferRate(moduleTier, module.energyComponentsScratch());
+            rateCap += moduleTier.maxTransferRate();
+            inputCap += moduleTier.maxInputRate();
             tierMask |= StructureStats.tierBit(moduleTier);
             if (moduleTier.ordinal() > capTier.ordinal()) {
                 capTier = moduleTier;
             }
         }
-        var stats = StructureStats.of(capTier, tierMask, layout.side(), capacity,
-                CellMath.totalTransferRate(capTier, rate));
+        var stats = StructureStats.of(capTier, tierMask, layout.side(), capacity, rate, rateCap, inputCap);
 
         // 单一能量池：整段只留一份能量，落在核心（待定项 3：拆结构时能量留在核心方块）。
         //
@@ -926,6 +955,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
             data.putInt("side", this.ownStats.side());
             data.putLong("capacity", this.ownStats.totalCapacity());
             data.putLong("rate", this.ownStats.totalTransferRate());
+            data.putLong("input", this.ownStats.totalInputRate());
+            // 上限是逐块提供量之和，读档时拿不到那一段方块，所以把两个和也存下——否则 `rate` 重新收口时
+            // 只能退回去拿「代表等级」的上限夹，读档后的账目会与存档前不一致。
+            data.putLong("rateCap", this.ownStats.rateCapSum());
+            data.putLong("inputCap", this.ownStats.inputCapSum());
             // 混等级：整段出现过哪几档要跟着走。代表等级（取最高档）由掩码现推，不另存一份会对不上的数。
             data.putInt("tierMask", this.ownStats.tierMask());
         }
@@ -985,11 +1019,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         }
         int tierMask = data.getInt("tierMask");
         var capTier = highestTier(tierMask);
+        // 上限之和跟着存档走；老存档（没有这两个键）退回「按代表等级的上限」这条旧口径，
+        // 下一次结构变更就会重算成新口径——存档不会因为口径升级而读出违反公式的账目。
+        long rateCap = data.contains("rateCap") ? data.getLong("rateCap") : capTier.maxTransferRate();
+        long inputCap = data.contains("inputCap") ? data.getLong("inputCap") : capTier.maxInputRate();
         // rate 必须重新收口，不能直接把存档里的数当结果：
-        // 上一版（V_max 还没接上时）写下的存档里 rate 是未收口的和，掩码丢失时代表等级也可能取小——
-        // 两者都会得出一份违反 T_v = min(Σ D_vj, V_max) 的账目，而这份账目正是能量面的口径。
-        this.ownStats = StructureStats.of(capTier, tierMask, side, capacity,
-                CellMath.totalTransferRate(capTier, rate));
+        // 上一版（上限还没接上时）写下的存档里 rate 是未收口的和，掩码丢失时代表等级也可能取小——
+        // 两者都会得出一份违反 T_v = min(Σ D_vj, Σ V_max_j) 的账目，而这份账目正是能量面的口径。
+        this.ownStats = StructureStats.of(capTier, tierMask, side, capacity, rate, rateCap, inputCap);
 
         // 池子上限跟着账目走。
         //
