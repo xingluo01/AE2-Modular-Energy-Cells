@@ -343,11 +343,9 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         // 逐条贴带：每条带是什么由行表决定，带图按「行角色 × 位置」两面选。
         // 位置指的是这条带在窗口里的位置（首条取「上」、末条取「下」、其余取「中」），与它上下面是标题还是模块行无关。
         for (int band = 0; band < this.bands; band++) {
-            // drawFG 收到的 offsetX/offsetY 就是面板在屏幕上的原点（AEBaseScreen#renderLabels 已把 pose 移到 leftPos/topPos），
-            // 本函数里的坐标一律是「面板相对」——再叠一次 offset 等于把面板原点算两遍：
-            // 图标是槽物品、按 slot.x/slot.y 画（面板相对），我方文字却按 slot.x+leftPos 画，
-            // 实机表现就是「图标在最左格、名字跑到面板右缘被裁掉、还整体低了 topPos」。
-            int rowY = this.tableTop + band * this.bandHeight;
+            // drawBG 跑在「面板原点平移之前」（AE2 在 renderBg 阶段直接调它），所以本函数里的坐标一律要自己加 offsetX/offsetY。
+            // —— 别和 drawFG 弄混：那边 pose 已平移到 leftPos/topPos，再加一次反而会偏。
+            int rowY = offsetY + this.tableTop + band * this.bandHeight;
 
             if (bandIsTitle(band)) {
                 titleBand(band).copy().dest(offsetX, rowY).blit(guiGraphics);
@@ -462,10 +460,8 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
             if (title == null) {
                 continue;
             }
-            // drawFG 收到的 offsetX/offsetY 就是面板在屏幕上的原点（AEBaseScreen#renderLabels 已把 pose 移到 leftPos/topPos），
-            // 本函数里的坐标一律是「面板相对」——再叠一次 offset 等于把面板原点算两遍：
-            // 图标是槽物品、按 slot.x/slot.y 画（面板相对），我方文字却按 slot.x+leftPos 画，
-            // 实机表现就是「图标在最左格、名字跑到面板右缘被裁掉、还整体低了 topPos」。
+            // 本函数（drawFG）跑在 pose 已平移到 (leftPos, topPos) 之后，坐标一律是「面板相对」；
+            // 再叠一次 offsetX/offsetY 等于把面板原点算两遍（图标是槽物品、按 slot.x 画，文字就会跑到右缘外）。
             int rowY = this.tableTop + band * this.bandHeight;
             // 文字位置优先跟「等级图标槽」走（需求：以虚拟物品为准）；槽位查不到时退回带几何，
             // 否则整行文字会直接消失——图标是服务端填的槽、文字是客户端算的，两者不能共用一个失败点。
