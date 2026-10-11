@@ -1,0 +1,42 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            name = "NeoForged"
+            url = "https://maven.neoforged.net/releases/"
+        }
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+rootProject.name = "AE2-Modular-Energy-Cells"
+
+// ModDevMCP：开发辅助——给 IDE / AI 代理一个查 Minecraft 与上游模组符号的 MCP 服务。
+// 0.3 没发布到任何公共 maven，所以本地源码仓库在场时直接把它替换成源码构建的 :Mod 子项目；
+// 不在场时由 build.gradle 那条 dev.vfyjxf:moddevmcp:0.1.6 决定成败（mavenLocal 有则成）。
+// 路径只从 -Pmoddevmcp_repo_path=<路径> 或环境变量 MODDEVMCP_REPO 取：
+// 刻意不写「本机默认值」——那会把某台机器的绝对路径（连用户名）随仓库发出去。
+def modDevMcpRepoPath = providers.gradleProperty('moddevmcp_repo_path')
+        .map { it.trim() }
+        .filter { !it.isEmpty() }
+        .orElse(providers.environmentVariable('MODDEVMCP_REPO').map { it.trim() }.filter { !it.isEmpty() })
+        .orNull
+def modDevMcpRepo = modDevMcpRepoPath != null ? file(modDevMcpRepoPath) : null
+
+if (modDevMcpRepo != null && modDevMcpRepo.exists()) {
+    includeBuild(modDevMcpRepo) {
+        dependencySubstitution {
+            substitute(module("dev.vfyjxf:moddevmcp")).using(project(":Mod"))
+        }
+    }
+} else if (modDevMcpRepoPath != null) {
+    // 显式传了路径却指到不存在的地方：要出声，否则会以为换成功了。
+    logger.warn("moddevmcp_repo_path 指向的目录不存在：{}，本次不接 ModDevMCP。", modDevMcpRepo.absolutePath)
+} else {
+    // 没传路径（大多数机器、包括克隆者）就是正常情况：不接源码构建，由 build.gradle 那条 maven 坐标决定。
+    logger.info("未提供 moddevmcp_repo_path / MODDEVMCP_REPO，本次不接 ModDevMCP 源码构建。")
+}

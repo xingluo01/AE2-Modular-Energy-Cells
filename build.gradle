@@ -1,0 +1,239 @@
+plugins {
+    id 'java-library'
+    id 'idea'
+    alias libs.plugins.modDevGradle
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+// NeoForge 1.21.1 ships Java 21 to end users.
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+sourceSets {
+    main.resources {
+        srcDir 'src/generated/resources'
+    }
+
+    // 客户端刻意留在独立源集：公共代码因此不可能误引客户端类。
+    // 这不是洁癖，是编译期防线（见 docs/ARCHITECTURE.md 的分层规矩）。
+    client {
+        compileClasspath += main.output
+        runtimeClasspath += main.output + main.runtimeClasspath
+    }
+}
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+    clientRuntimeClasspath.extendsFrom clientLocalRuntime
+}
+
+neoForge {
+    version = libs.versions.neoForge.get()
+
+    parchment {
+        minecraftVersion = libs.versions.minecraft.get()
+        mappingsVersion = libs.versions.parchment.get()
+    }
+
+    addModdingDependenciesTo(sourceSets.client)
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+            sourceSet(sourceSets.client)
+        }
+    }
+
+    runs {
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            systemProperty 'forge.logging.console.level', 'debug'
+            logLevel = org.slf4j.event.Level.INFO
+        }
+
+        client {
+            client()
+            sourceSet = sourceSets.client
+            ideName = 'Client'
+        }
+
+        server {
+            server()
+            ideName = 'Server'
+            programArguments.addAll '--nogui'
+        }
+
+        data {
+            data()
+            sourceSet = sourceSets.main
+            ideName = 'Data Generation'
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').absolutePath, '--existing', file('src/main/resources/').absolutePath
+        }
+    }
+}
+
+// 默认的 java 组件只含 sourceSets.main。本项目的客户端代码在独立源集里，所以要显式并进
+// 可发布的 jar；这条依赖同时把构建顺序写清楚。
+tasks.named('jar', Jar) {
+    dependsOn sourceSets.client.classesTaskName
+    from sourceSets.client.output
+    // LGPL-3.0 要求许可证文本随分发件走。
+    from('LICENSE') { into 'META-INF' }
+}
+
+tasks.matching { it.name == 'remapJar' }.configureEach {
+    dependsOn sourceSets.client.classesTaskName
+}
+
+// 模组元数据由模板展开：src/main/templates/META-INF/neoforge.mods.toml 是唯一事实源，
+// build/resources 下那份是生成件，不要手改。
+var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    var replaceProperties = [
+        minecraft_version       : minecraft_version,
+        minecraft_version_range : minecraft_version_range,
+        neo_version             : neo_version,
+        neo_version_range       : neo_version_range,
+        loader_version_range    : loader_version_range,
+        mod_id                  : mod_id,
+        mod_name                : mod_name,
+        mod_license             : mod_license,
+        mod_version             : mod_version,
+        mod_authors             : mod_authors,
+        mod_description         : mod_description,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+
+sourceSets.main.resources.srcDir generateModMetadata
+
+tasks.named('processResources', ProcessResources) {
+    dependsOn generateModMetadata
+}
+
+dependencies {
+    compileOnly(libs.jetbrains.annotations)
+
+    // AE2 与 GuideME 由整合包提供，只作编译期依赖；运行期由下面的 localRuntime 供开发环境加载。
+    compileOnly(libs.ae2)
+    compileOnly(libs.guideme)
+
+    // 客户端源集要显式声明，main 侧的 compileOnly 看不到这里。
+    clientCompileOnly(libs.ae2)
+    clientCompileOnly(libs.guideme)
+
+    // 配方查看器：编译期 API，运行期是可选的（默认 JEI，-Pemi 切 EMI）。
+    clientCompileOnly(libs.jei)
+    clientCompileOnly(libs.emi)
+
+    // ---- 开发运行期 ----
+    // AE2 与 GuideME 交付时由整合包提供，这里只是让开发环境跑得起来。
+    localRuntime 'curse.maven:applied-energistics-2-223794:7027323'
+    localRuntime 'maven.modrinth:guideme:21.1.15'
+    // JEI / EMI 与它们的桥都是纯客户端 mod，所以走 clientLocalRuntime：一来 server 与 datagen 运行不需
+    // 要配方查看器，二来 JEI 在无客户端的进程里初始化会崩（它的构造期碰 Minecraft.getInstance()，
+    // datagen 里那个实例是 null）——挂在 localRuntime 上会让 runData 直接失败。
+    if (project.hasProperty('emi')) {
+        // EMI 口径：不装 JEI，也不装 AE2 的 JEI 桥——桥的元数据把 JEI 标成必需，
+        // 混进这一支会让客户端在预加载阶段因缺 JEI 直接起不来。
+        clientLocalRuntime(libs.emi)
+    } else {
+        clientLocalRuntime(libs.jei.runtime)
+        // AE2 的 JEI 集成是独立模组（AE2 本体不带），缺它 JEI 里不会出现 AE2 配方类别。
+        clientLocalRuntime 'curse.maven:ae2-jei-integration-1074338:7727898'
+    }
+
+    // ---- 可选邻居：只进开发环境，不是发布依赖 ----
+    // 槽位要收的存储组件分散在三个模组里，缺谁就验不到谁那条路径，所以三个都装：
+    //   AE2 本体                1k / 4k / 16k / 64k / 256k 存储组件
+    //   MEGA Cells              cell_component_1m ~ 256m（1M ~ 256M MEGA Storage Component）
+    //   AppFlux（Applied Flux）  core_1k ~ 256m（1k ~ 256M ME Energy Storage Component）
+    localRuntime(libs.megacells)
+    localRuntime(libs.appflux)
+    // AppFlux 的必需前置：AE2 与 GuideME 上面已有，Glodium 是它要的共享 UI 库。
+    localRuntime(libs.glodium)
+    // Applied Generators（应用发电机）：FE 侧的电源，配合 AppFlux 把 FE 折成 AE，用来验容量与速率的
+    // 稳态行为。它的三个必需前置（AE2 / Glodium / AppFlux）都在上面。
+    localRuntime(libs.applied.generators)
+    // Jade：M7 的方块信息浮层集成要对着它写。浮层是纯客户端的东西，所以运行期走 clientLocalRuntime。
+    // 编译期只需 compileOnly：integration/jade 那个 @WailaPlugin 要引 jade 的 API 类型，而它不会被总是加载的类引用
+    // ——Jade 缺席时那个类不会被加载（注解扫描是 Jade 做的），所以不引任何类型名进总是加载的路径。
+    compileOnly(libs.jade)
+    clientLocalRuntime(libs.jade)
+    // AE2 Omni Cells：混合类型存储元件（含 256m 档），用来验证槽位对第三方组件同样工作。
+    localRuntime(libs.ae2.omni.cells)
+    // Construction Wand - KOTS（建筑手杖）：只作测试 mod，实机验「用建筑手杖对着本模组方块延伸摆放」的观感。
+    // 它是纯客户端的建造辅助，不引它的 API（无 compileOnly）。
+    clientLocalRuntime(libs.construction.wand)
+    // ModDevMCP：开发辅助，给 IDE / AI 代理一个查符号与映射的 MCP 服务。
+    // 它没发布到任何公共 maven：本地源码仓库在场时由 settings.gradle 的 includeBuild 顶掉这条坐标，
+    // 否则只能靠 mavenLocal 里那份 0.1.6。两者都没有时——编译与 build 不受影响，但 run* 会在解析
+    // runtimeClasspath 时失败（本机有源码仓库，所以现在能解析）。不要它的话，这一段与 settings.gradle
+    // 的同名段落一起删。
+    localRuntime 'dev.vfyjxf:moddevmcp:0.1.6'
+
+    // ---- 优化与辅助（纯客户端，所以走 clientLocalRuntime）----
+    // Embeddium：渲染优化。大结构同屏几千台方块实体时，没它很难分辨「本模组卡」还是「渲染管线卡」。
+    clientLocalRuntime(libs.embeddium)
+    // Modern UI：UI 渲染库。本模组屏幕走 AE2 样式系统，装着它才能早点撞见两者共存的渲染问题。
+    clientLocalRuntime(libs.modern.ui)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(ProcessResources).configureEach {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven {
+        name = 'NeoForged'
+        url = 'https://maven.neoforged.net/releases/'
+    }
+    maven {
+        name = 'ModMaven'
+        url = 'https://modmaven.dev'
+    }
+    maven {
+        name = 'BlameJared'
+        url = 'https://maven.blamejared.com'
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://maven.terraformersmc.com/releases/' }
+        }
+        filter { includeGroup 'dev.emi' }
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://api.modrinth.com/maven' }
+        }
+        filter { includeGroup 'maven.modrinth' }
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://cursemaven.com' }
+        }
+        filter { includeGroup 'curse.maven' }
+    }
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}

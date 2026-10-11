@@ -1,0 +1,21 @@
+{
+  "block.ae2modularcells.basic_energy_cell_module": "Modular Basic Energy Unit",
+  "block.ae2modularcells.dense_energy_cell_module": "Modular Dense Energy Unit",
+  "block.ae2modularcells.superdense_energy_cell_module": "Modular Superdense Energy Unit",
+  "itemGroup.ae2modularcells": "AE2 Modular Energy Units",
+  "gui.ae2modularcells.energy_module_terminal.title": "Energy Module Terminal",
+  "gui.ae2modularcells.module_label": "(%s, %s, %s)",
+  "gui.ae2modularcells.tier_group_count": "Modules: %s",
+  "gui.ae2modularcells.energy_storage": "Stored:",
+  "gui.ae2modularcells.input_rate": "Input:",
+  "gui.ae2modularcells.storage.value": "%s/%s AE",
+  "gui.ae2modularcells.input.value": "%s/%s AE/t",
+  "jade.ae2modularcells.not_formed": "Not formed",
+  "jade.ae2modularcells.formed": "Formed",
+  "jade.ae2modularcells.module_size": "Module size: %s",
+  "gui.ae2modularcells.display_mode.letters": "Letter notation",
+  "gui.ae2modularcells.display_mode.scientific": "Scientific notation",
+  "gui.ae2modularcells.display_mode.engineering": "Engineering notation",
+  "gui.ae2modularcells.display_mode.tooltip": "Count mode:",
+  "config.jade.plugin_ae2modularcells.module_structure": "Energy Module Structure"
+}

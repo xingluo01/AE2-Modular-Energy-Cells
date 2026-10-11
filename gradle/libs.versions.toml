@@ -1,0 +1,55 @@
+[versions]
+minecraft = "1.21.1"
+neoForge = "21.1.241"
+parchment = "2024.11.17"
+modDevGradle = "2.0.144"
+jetbrains-annotations = "26.1.0"
+
+ae2 = "19.2.18"
+guideme = "21.1.15"
+jei = "19.56.0.438"
+
+[libraries]
+minecraft = { module = "com.mojang:minecraft", version.ref = "minecraft" }
+neoForge = { module = "net.neoforged:neoforge", version.ref = "neoForge" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }
+
+ae2 = { module = "org.appliedenergistics:appliedenergistics2", version.ref = "ae2" }
+guideme = { module = "org.appliedenergistics:guideme", version.ref = "guideme" }
+
+emi = { module = "dev.emi:emi-neoforge", version = "1.1.22+1.21.1" }
+jei = { module = "mezz.jei:jei-1.21.1-neoforge-api", version.ref = "jei" }
+jei-runtime = { module = "mezz.jei:jei-1.21.1-neoforge", version.ref = "jei" }
+
+# ---- 开发运行期的可选邻居（都不是发布依赖）----
+# 槽位要收的存储组件分散在几个模组里，缺谁就验不到谁那条路径。
+# Modrinth 坐标的写法：跨 loader 同名的那些（megacells / appflux / ae2-omni-cells）一律用「项目 id + 版本 id」
+# 双钉位——RPG4EriK / 4x40hq9D / k444ySGT 都是版本 id，写版本号会解析到 fabric/forge 的同名构建；
+# jade 与 embeddium 的版本号自带 neoforge / mc 后缀、modern-ui 只发 neoforge，不会撞名。
+megacells = { module = "maven.modrinth:jjuIRIVr", version = "RPG4EriK" }
+appflux = { module = "maven.modrinth:appflux", version = "4x40hq9D" }
+jade = { module = "maven.modrinth:jade", version = "15.10.6+neoforge" }
+
+# AppFlux 的必需前置之一（另两个是 AE2 与 GuideME）——Glodium 是 AE2 生态的共享 UI 库。
+glodium = { module = "io.github.glodblock:Glodium", version = "1.21-2.2-neoforge" }
+
+# Applied Generators（应用发电机）：给开发环境一个能持续灌 FE 的源，配合 AppFlux 把 FE 折成 AE，
+# 用来验容量与速率的稳态行为（数值量级见 docs/TODO.md 的 M8 欠账）。它的必需前置是 AE2 + Glodium +
+# AppFlux，三者都已在场。坐标按「项目 id + 版本 id」双钉位，与其他 Modrinth 依赖同规。
+applied-generators = { module = "maven.modrinth:y1qmWFWM", version = "TW2EMLE6" }
+
+# ---- 开发运行期的优化/辅助 mod（只进 localRuntime / clientLocalRuntime）----
+# Embeddium：NeoForge 上的 Sodium 分支，把渲染开销压下来。大结构同屏几千台方块实体时，
+# 没它很难分辨「本模组卡」还是「渲染管线卡」。
+embeddium = { module = "maven.modrinth:embeddium", version = "1.0.15+mc1.21.1" }
+# Modern UI：现代 UI 渲染库。本模组屏幕走 AE2 样式系统，装着它才能早点撞见两者共存的渲染问题。
+modern-ui = { module = "maven.modrinth:modern-ui", version = "3.13.0.1" }
+# AE2 Omni Cells：混合类型存储元件（含 256m 档），用来验证槽位对第三方组件同样工作。
+ae2-omni-cells = { module = "maven.modrinth:ae2-omni-cells", version = "k444ySGT" }
+# Construction Wand - KOTS（建筑手杖）：原作 Construction Wand 只发到 1.20.2/Forge，KOTS 是它在
+# 1.21.1/NeoForge 上的续作，只作开发环境的**测试 mod**——在实机上验「对着本模组的方块延伸摆放」的观感，
+# 不引它的 API、不加编译期依赖。坐标同样双钉位（该仓有 forge/neoforge 两条线，写版本号会解析错那条）。
+construction-wand = { module = "maven.modrinth:construction-wand-kots", version = "cFpoCw3t" }
+
+[plugins]
+modDevGradle = { id = "net.neoforged.moddev", version.ref = "modDevGradle" }

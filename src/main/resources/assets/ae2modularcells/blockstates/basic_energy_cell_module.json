@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "ae2modularcells:block/basic_energy_cell_module"
+    }
+  }
+}

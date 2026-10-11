@@ -1,0 +1,720 @@
+{
+ "$schema": "../schema.json",
+ "includes": [
+  "../common/palette.json",
+  "../common/player_inventory.json"
+ ],
+ "background": {
+  "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+  "srcRect": [
+   0,
+   0,
+   249,
+   221
+  ],
+  "textureWidth": 256,
+  "textureHeight": 256,
+  "$comment": "主 GUI 区就是这一块：249×221 = 表头 17 + 6 条带 108 + 表尾 96。屏幕尺寸 = 背景切片尺寸（面板高度会随终端样式档位变，由屏幕覆写）。其余部分是附属资源：下方 221..256 是两条进度条覆盖层的素材区（0,221 与 0,229），右侧 249..256 透明不画。"
+ },
+ "images": {
+  "tableHeader": {
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    0,
+    249,
+    17
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "顶部条 17px。"
+  },
+  "tableFooter": {
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    125,
+    249,
+    96
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "底部 96px：125..220，含玩家背包、快捷栏与两条进度条。"
+  },
+  "unavailableSlot": {
+   "texture": "ae2modularcells:textures/gui/states.png",
+   "srcRect": [
+    0,
+    240,
+    16,
+    16
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "不可用槽覆盖层：模块提供的组件槽不够时盖在多余的格上。"
+  },
+  "componentSlot": {
+   "texture": "ae2modularcells:textures/gui/states.png",
+   "srcRect": [
+    16,
+    240,
+    16,
+    16
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "存储组件槽覆盖层：该格可用时盖。"
+  },
+  "storageBar": {
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    178,
+    163,
+    60,
+    8
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "储能进度条轨道。"
+  },
+  "inputBar": {
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    178,
+    200,
+    60,
+    8
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "输入速率进度条轨道。"
+  },
+  "storageBarOverlay": {
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    221,
+    60,
+    8
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "储能进度条覆盖层：这里的坐标只是「素材在这儿」，不是落点；屏幕把整块 60×8 按比例裁左端，贴到储能轨道上。"
+  },
+  "inputBarOverlay": {
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    229,
+    60,
+    8
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256,
+   "$comment": "输入速率进度条覆盖层：同储能覆盖层，坐标只是素材位置，落点由屏幕按轨道位置算。"
+  },
+  "rowTextTop": {
+   "$comment": "文本行·上：面板第一行用它，自带顶边框。",
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    17,
+    249,
+    18
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256
+  },
+  "rowSlotsTop": {
+   "$comment": "槽行·上：第二行（第一个模块的 12 格）。",
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    35,
+    249,
+    18
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256
+  },
+  "rowTextMiddle": {
+   "$comment": "文本行·中：中间行。",
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    53,
+    249,
+    18
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256
+  },
+  "rowSlotsMiddle": {
+   "$comment": "槽行·中。",
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    71,
+    249,
+    18
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256
+  },
+  "rowTextBottom": {
+   "$comment": "文本行·下：倒数第二行。",
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    89,
+    249,
+    18
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256
+  },
+  "rowSlotsBottom": {
+   "$comment": "槽行·下：面板最后一行，自带底边框。",
+   "texture": "ae2modularcells:textures/gui/energy_module_terminal.png",
+   "srcRect": [
+    0,
+    107,
+    249,
+    18
+   ],
+   "textureWidth": 256,
+   "textureHeight": 256
+  }
+ },
+ "slots": {
+  "PLAYER_INVENTORY": {
+   "$comment": "玩家背包 3×9 格。贴图里背包区外框从 7,136 起（162×54 含外框），而槽位的 16×16 内容区在框内 1px 处（8,137）——左/上都取内容区原点，AE2 的 slot.x/y 指的就是它。",
+   "left": 8,
+   "top": 137,
+   "grid": "BREAK_AFTER_9COLS"
+  },
+  "PLAYER_HOTBAR": {
+   "$comment": "快捷栏 9 格，同背包：外框 7,194，内容区原点 8,195。",
+   "left": 8,
+   "top": 195,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_0": {
+   "$comment": "第 1 条带·第 1 列模块格。",
+   "left": 8,
+   "top": 18
+  },
+  "ae2modularcells:module_components_0": {
+   "$comment": "第 1 条带·第 1 列的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 18,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_1": {
+   "$comment": "第 1 条带·第 2 列模块格。",
+   "left": 80,
+   "top": 18
+  },
+  "ae2modularcells:module_components_1": {
+   "$comment": "",
+   "left": 98,
+   "top": 18,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_2": {
+   "$comment": "第 1 条带·第 3 列模块格。",
+   "left": 152,
+   "top": 18
+  },
+  "ae2modularcells:module_components_2": {
+   "$comment": "",
+   "left": 170,
+   "top": 18,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_3": {
+   "$comment": "第 2 条带·第 1 列模块格。",
+   "left": 8,
+   "top": 36
+  },
+  "ae2modularcells:module_components_3": {
+   "$comment": "第 2 条带·第 1 列的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 36,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_4": {
+   "$comment": "第 2 条带·第 2 列模块格。",
+   "left": 80,
+   "top": 36
+  },
+  "ae2modularcells:module_components_4": {
+   "$comment": "",
+   "left": 98,
+   "top": 36,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_5": {
+   "$comment": "第 2 条带·第 3 列模块格。",
+   "left": 152,
+   "top": 36
+  },
+  "ae2modularcells:module_components_5": {
+   "$comment": "",
+   "left": 170,
+   "top": 36,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_6": {
+   "$comment": "第 3 条带·第 1 列模块格。",
+   "left": 8,
+   "top": 54
+  },
+  "ae2modularcells:module_components_6": {
+   "$comment": "第 3 条带·第 1 列的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 54,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_7": {
+   "$comment": "第 3 条带·第 2 列模块格。",
+   "left": 80,
+   "top": 54
+  },
+  "ae2modularcells:module_components_7": {
+   "$comment": "",
+   "left": 98,
+   "top": 54,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_8": {
+   "$comment": "第 3 条带·第 3 列模块格。",
+   "left": 152,
+   "top": 54
+  },
+  "ae2modularcells:module_components_8": {
+   "$comment": "",
+   "left": 170,
+   "top": 54,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_9": {
+   "$comment": "第 4 条带·第 1 列模块格。",
+   "left": 8,
+   "top": 72
+  },
+  "ae2modularcells:module_components_9": {
+   "$comment": "第 4 条带·第 1 列的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 72,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_10": {
+   "$comment": "第 4 条带·第 2 列模块格。",
+   "left": 80,
+   "top": 72
+  },
+  "ae2modularcells:module_components_10": {
+   "$comment": "",
+   "left": 98,
+   "top": 72,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_11": {
+   "$comment": "第 4 条带·第 3 列模块格。",
+   "left": 152,
+   "top": 72
+  },
+  "ae2modularcells:module_components_11": {
+   "$comment": "",
+   "left": 170,
+   "top": 72,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_12": {
+   "$comment": "第 5 条带·第 1 列模块格。",
+   "left": 8,
+   "top": 90
+  },
+  "ae2modularcells:module_components_12": {
+   "$comment": "第 5 条带·第 1 列的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 90,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_13": {
+   "$comment": "第 5 条带·第 2 列模块格。",
+   "left": 80,
+   "top": 90
+  },
+  "ae2modularcells:module_components_13": {
+   "$comment": "",
+   "left": 98,
+   "top": 90,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_14": {
+   "$comment": "第 5 条带·第 3 列模块格。",
+   "left": 152,
+   "top": 90
+  },
+  "ae2modularcells:module_components_14": {
+   "$comment": "",
+   "left": 170,
+   "top": 90,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_15": {
+   "$comment": "第 6 条带·第 1 列模块格。",
+   "left": 8,
+   "top": 108
+  },
+  "ae2modularcells:module_components_15": {
+   "$comment": "第 6 条带·第 1 列的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 108,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_16": {
+   "$comment": "第 6 条带·第 2 列模块格。",
+   "left": 80,
+   "top": 108
+  },
+  "ae2modularcells:module_components_16": {
+   "$comment": "",
+   "left": 98,
+   "top": 108,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_17": {
+   "$comment": "第 6 条带·第 3 列模块格。",
+   "left": 152,
+   "top": 108
+  },
+  "ae2modularcells:module_components_17": {
+   "$comment": "",
+   "left": 170,
+   "top": 108,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_18": {
+   "$comment": "第 7 条带·第 1 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 8,
+   "top": 126
+  },
+  "ae2modularcells:module_components_18": {
+   "$comment": "第 7 条带·第 1 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 126,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_19": {
+   "$comment": "第 7 条带·第 2 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 80,
+   "top": 126
+  },
+  "ae2modularcells:module_components_19": {
+   "$comment": "第 7 条带·第 2 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 98,
+   "top": 126,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_20": {
+   "$comment": "第 7 条带·第 3 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 152,
+   "top": 126
+  },
+  "ae2modularcells:module_components_20": {
+   "$comment": "第 7 条带·第 3 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 170,
+   "top": 126,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_21": {
+   "$comment": "第 8 条带·第 1 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 8,
+   "top": 144
+  },
+  "ae2modularcells:module_components_21": {
+   "$comment": "第 8 条带·第 1 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 144,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_22": {
+   "$comment": "第 8 条带·第 2 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 80,
+   "top": 144
+  },
+  "ae2modularcells:module_components_22": {
+   "$comment": "第 8 条带·第 2 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 98,
+   "top": 144,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_23": {
+   "$comment": "第 8 条带·第 3 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 152,
+   "top": 144
+  },
+  "ae2modularcells:module_components_23": {
+   "$comment": "第 8 条带·第 3 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 170,
+   "top": 144,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_24": {
+   "$comment": "第 9 条带·第 1 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 8,
+   "top": 162
+  },
+  "ae2modularcells:module_components_24": {
+   "$comment": "第 9 条带·第 1 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 162,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_25": {
+   "$comment": "第 9 条带·第 2 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 80,
+   "top": 162
+  },
+  "ae2modularcells:module_components_25": {
+   "$comment": "第 9 条带·第 2 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 98,
+   "top": 162,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_26": {
+   "$comment": "第 9 条带·第 3 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 152,
+   "top": 162
+  },
+  "ae2modularcells:module_components_26": {
+   "$comment": "第 9 条带·第 3 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 170,
+   "top": 162,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_27": {
+   "$comment": "第 10 条带·第 1 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 8,
+   "top": 180
+  },
+  "ae2modularcells:module_components_27": {
+   "$comment": "第 10 条带·第 1 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 180,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_28": {
+   "$comment": "第 10 条带·第 2 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 80,
+   "top": 180
+  },
+  "ae2modularcells:module_components_28": {
+   "$comment": "第 10 条带·第 2 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 98,
+   "top": 180,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_29": {
+   "$comment": "第 10 条带·第 3 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 152,
+   "top": 180
+  },
+  "ae2modularcells:module_components_29": {
+   "$comment": "第 10 条带·第 3 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 170,
+   "top": 180,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_30": {
+   "$comment": "第 11 条带·第 1 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 8,
+   "top": 198
+  },
+  "ae2modularcells:module_components_30": {
+   "$comment": "第 11 条带·第 1 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 198,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_31": {
+   "$comment": "第 11 条带·第 2 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 80,
+   "top": 198
+  },
+  "ae2modularcells:module_components_31": {
+   "$comment": "第 11 条带·第 2 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 98,
+   "top": 198,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_32": {
+   "$comment": "第 11 条带·第 3 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 152,
+   "top": 198
+  },
+  "ae2modularcells:module_components_32": {
+   "$comment": "第 11 条带·第 3 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 170,
+   "top": 198,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_33": {
+   "$comment": "第 12 条带·第 1 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 8,
+   "top": 216
+  },
+  "ae2modularcells:module_components_33": {
+   "$comment": "第 12 条带·第 1 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 26,
+   "top": 216,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_34": {
+   "$comment": "第 12 条带·第 2 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 80,
+   "top": 216
+  },
+  "ae2modularcells:module_components_34": {
+   "$comment": "第 12 条带·第 2 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 98,
+   "top": 216,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_35": {
+   "$comment": "第 12 条带·第 3 列模块格（TALL / FULL 档位才会显示）。",
+   "left": 152,
+   "top": 216
+  },
+  "ae2modularcells:module_components_35": {
+   "$comment": "第 12 条带·第 3 列模块的 3 个组件格（横排 18px 一格）。",
+   "left": 170,
+   "top": 216,
+   "grid": "HORIZONTAL"
+  },
+  "ae2modularcells:module_title_0": {
+   "$comment": "第 1 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 18
+  },
+  "ae2modularcells:module_title_1": {
+   "$comment": "第 2 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 36
+  },
+  "ae2modularcells:module_title_2": {
+   "$comment": "第 3 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 54
+  },
+  "ae2modularcells:module_title_3": {
+   "$comment": "第 4 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 72
+  },
+  "ae2modularcells:module_title_4": {
+   "$comment": "第 5 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 90
+  },
+  "ae2modularcells:module_title_5": {
+   "$comment": "第 6 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 108
+  },
+  "ae2modularcells:module_title_6": {
+   "$comment": "第 7 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 126
+  },
+  "ae2modularcells:module_title_7": {
+   "$comment": "第 8 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 144
+  },
+  "ae2modularcells:module_title_8": {
+   "$comment": "第 9 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 162
+  },
+  "ae2modularcells:module_title_9": {
+   "$comment": "第 10 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 180
+  },
+  "ae2modularcells:module_title_10": {
+   "$comment": "第 11 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 198
+  },
+  "ae2modularcells:module_title_11": {
+   "$comment": "第 12 条带的等级图标格（只在标题行显示；右击它选中该等级组）。",
+   "left": 8,
+   "top": 216
+  }
+ },
+ "text": {
+  "dialog_title": {
+   "text": {
+    "translate": "gui.ae2modularcells.energy_module_terminal.title"
+   },
+   "position": {
+    "left": 8,
+    "top": 6
+   }
+  },
+  "player_inventory_title": {
+   "text": {
+    "translate": "container.inventory"
+   },
+   "position": {
+    "left": 7,
+    "top": 126
+   }
+  },
+  "energy_storage_label": {
+   "text": {
+    "translate": "gui.ae2modularcells.energy_storage"
+   },
+   "position": {
+    "left": 178,
+    "top": 143
+   }
+  },
+  "input_rate_label": {
+   "text": {
+    "translate": "gui.ae2modularcells.input_rate"
+   },
+   "position": {
+    "left": 178,
+    "top": 180
+   }
+  }
+ },
+ "widgets": {
+  "verticalToolbar": {
+   "left": 3,
+   "top": 1
+  },
+  "tableScrollbar": {
+   "$comment": "滚动轨道 x=232..237（中心 234.5），AE2 的 BIG 滑块 12 宽，故滑块左缘 229。这里的 height 只是默认值：每帧由屏幕按当前条数 setHeight（见 EnergyModuleTerminalScreen#updateBeforeRender）。",
+   "left": 229,
+   "top": 17,
+   "height": 108
+  },
+  "storageValue": {
+   "$comment": "储能数值文本锚点，内容由屏幕每帧填（样式文档的 text 段只能放固定字符串）。",
+   "left": 178,
+   "top": 153
+  },
+  "inputValue": {
+   "$comment": "输入速率数值文本锚点。",
+   "left": 178,
+   "top": 190
+  }
+ },
+ "helpTopic": "ae2modularcells:items-blocks-machines/energy_cell_module.md"
+}

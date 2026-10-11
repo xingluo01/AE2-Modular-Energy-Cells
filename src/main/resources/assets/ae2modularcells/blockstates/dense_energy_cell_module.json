@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "ae2modularcells:block/dense_energy_cell_module"
+    }
+  }
+}

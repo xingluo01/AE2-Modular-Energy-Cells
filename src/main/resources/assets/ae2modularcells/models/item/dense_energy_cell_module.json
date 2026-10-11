@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "ae2modularcells:block/dense_energy_cell_module_face"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "block.ae2modularcells.basic_energy_cell_module": "模块化基础能量单元",
+  "block.ae2modularcells.dense_energy_cell_module": "模块化致密能量单元",
+  "block.ae2modularcells.superdense_energy_cell_module": "模块化超密能量单元",
+  "itemGroup.ae2modularcells": "AE2 模块化能量单元",
+  "gui.ae2modularcells.energy_module_terminal.title": "模块管理终端",
+  "gui.ae2modularcells.module_label": "(%s, %s, %s)",
+  "gui.ae2modularcells.tier_group_count": "模块数量：%s",
+  "gui.ae2modularcells.energy_storage": "储能：",
+  "gui.ae2modularcells.input_rate": "输入速率：",
+  "gui.ae2modularcells.storage.value": "%s/%s AE",
+  "gui.ae2modularcells.input.value": "%s/%s AE/t",
+  "jade.ae2modularcells.not_formed": "未成型",
+  "jade.ae2modularcells.formed": "已成型",
+  "jade.ae2modularcells.module_size": "模块尺寸：%s",
+  "gui.ae2modularcells.display_mode.letters": "字母计数",
+  "gui.ae2modularcells.display_mode.scientific": "科学计数",
+  "gui.ae2modularcells.display_mode.engineering": "工程计数",
+  "gui.ae2modularcells.display_mode.tooltip": "计数模式：",
+  "config.jade.plugin_ae2modularcells.module_structure": "能源模块结构"
+}

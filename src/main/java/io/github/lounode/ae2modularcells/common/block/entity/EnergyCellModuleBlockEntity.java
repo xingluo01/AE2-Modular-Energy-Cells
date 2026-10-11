@@ -1,0 +1,876 @@
+package io.github.lounode.ae2modularcells.common.block.entity;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+
+import org.jetbrains.annotations.Nullable;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.items.IItemHandler;
+import net.neoforged.neoforge.client.model.data.ModelData;
+
+import appeng.api.config.Actionable;
+import appeng.api.inventories.InternalInventory;
+import appeng.blockentity.grid.AENetworkedPoweredBlockEntity;
+import appeng.util.inv.AppEngInternalInventory;
+import appeng.util.inv.InternalInventoryHost;
+
+import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.ModularCellConstants;
+import io.github.lounode.ae2modularcells.common.StorageComponents;
+import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
+import io.github.lounode.ae2modularcells.common.StorageComponents;
+import io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage;
+import io.github.lounode.ae2modularcells.common.inventory.ComponentInsertOnlyItemHandler;
+import io.github.lounode.ae2modularcells.common.logic.CellMath;
+import io.github.lounode.ae2modularcells.common.logic.MultiblockScanner;
+import io.github.lounode.ae2modularcells.common.logic.StructureStats;
+import io.github.lounode.ae2modularcells.common.logic.TerminalRows;
+
+/**
+ * 能源模块方块实体：组件槽、结构引用、连接状态三件事都在这里。
+ *
+ * <p>角色是动态的：<b>坐标最小的那一块</b>是整段结构的核心，它持有结构范围与整段账目；其余块只记「我的
+ * 核心在哪」。未成型的单块自己就是核心，账目就是它自己那一块。</p>
+ *
+ * <p>三条纪律写在这里免得后来者踩：</p>
+ * <ul>
+ * <li><b>不注册 ticker</b>：这个类没有 tick 方法，结构检测只在放置/破坏/组件变化时触发。</li>
+ * <li><b>能量池只在核心</b>：储能存在核心身上；非核心从任何面收到 FE，同一 tick 转交给核心的池子
+ * （{@link #funnelPowerIntoStorage}），自己不存——否则一个电池就变成了 4096 个小电池。</li>
+ * <li><b>连接状态是推导值</b>：从世界方块状态现算（{@link #getConnections()}），不持久化、不做增量维护。</li>
+ * </ul>
+ */
+public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity implements InternalInventoryHost {
+
+    /** 组件槽里放的东西（§2.2）。尺寸按等级 1 / 2 / 3。 */
+    private final AppEngInternalInventory components;
+
+    /** 等级在构造时钉住：它由方块决定，方块实体一旦建成就不会再变。 */
+    private final EnergyCellTier tier;
+
+    /**
+     * 我所属结构的核心位置。<b>非核心才写</b>：核心用 {@link #structureOrigin} 表明身份，两者都为 null
+     * 表示这一块是独立元件。
+     */
+    @Nullable
+    private BlockPos corePos;
+
+    /** 我这一段的立方体最小角，也就是核心自己的位置。<b>只在核心上非 null</b>。 */
+    @Nullable
+    private BlockPos structureOrigin;
+
+    /** 本块持有的账目：核心上是整段，非核心上是它自己那块（对外读请走 {@link #stats()}）。 */
+    private StructureStats ownStats;
+
+    /** 行表缓存：只有核心会填，失效条件是账目快照变了（见 {@link #rows()}）。 */
+    @Nullable
+    private List<TerminalRows.Row> rowCache;
+    @Nullable
+    private StructureStats rowCacheStats;
+
+    /** 逐块汇总时复用的暂存数组（容量侧：存储组件值），见 {@link #componentCapacitiesScratch()}。 */
+    private final long[] capacityScratch = new long[ModularCellConstants.maxComponentSlots()];
+    /** 逐块汇总时复用的暂存数组（速率侧：能量存储组件值），见 {@link #energyComponentsScratch()}。 */
+    private final long[] energyScratch = new long[ModularCellConstants.maxComponentSlots()];
+
+    /**
+     * 只进不出的 FE 面（懒建）。能力注册拿到的是它，不是 AE2 自己那份适配器。
+     *
+     * @see io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage
+     */
+    @Nullable
+    private IEnergyStorage feInput;
+
+    /** 最后一次实测的输入速率（AE/t），配 {@link #inputRateTick} 判断寿命。 */
+    private long inputRateThisTick;
+    private long inputRateTick = Long.MIN_VALUE;
+
+    /**
+     * 一个实测值的寿命（tick）。
+     *
+     * <p>「本 tick 收了多少」是个脉冲式的量：下一 tick 没能量进来就回 0 了。而界面是隔一会儿才采样一次
+     * （菜单同步不是每 tick 都发生），采样点绝大多数落在没输入的 tick 上，于是用 FE 灌能时那根条子看起来
+     * 根本不动。所以给每个实测值一个寿命：10 tick 内没有新值就归零，期间它一直有效。</p>
+     */
+    private static final int INPUT_RATE_TTL_TICKS = 10;
+
+    /** 最近一次真实（非模拟）插入记下的时间：上面那个「本 tick」是按游戏时间懒重置的，不需要 ticker。 */
+    private long lastInputTick = Long.MIN_VALUE;
+
+    /**
+     * 正在从 NBT 读档。
+     *
+     * <p>读槽位走的是 {@code setItemDirect}，而它会把「组件变了」当成一次结构变更——一段 4096 块的
+     * 结构读档时就是上万次扫描。读档期间置位，读完就落地：读档之后的第一次真实触发（放置/破坏/组件变化）
+     * 会自然把该算的算出来。</p>
+     */
+    private boolean loading;
+
+    /** 六向的固定数组：{@link Direction#values()} 每次调用都会新建一个数组，而结构汇总与连接判定都在逐块循环里。 */
+    private static final Direction[] DIRECTIONS = Direction.values();
+
+    public EnergyCellModuleBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
+        super(type, pos, state);
+        this.tier = requireTier(state);
+        // host 不能省：AppEngInternalInventory 只有在有 host 时才会调 saveChangedInventory，
+        // 而「方块实体被打上脏标记」就是这么来的。不传 host 时，组件槽里的改动会不会被存档取决于
+        // rebuildStructure() 是否碰巧改了账目——改了才 setChanged，没改就静默丢掉（退游戏后组件消失）。
+        // 组件槽一个槽只放一件：容量折扣按「插了几件」算，堆叠会让公式失去意义。
+        this.components = new AppEngInternalInventory(this, tier.componentSlots(), 1);
+        this.ownStats = StructureStats.single(tier, new long[0], new long[0]);
+        // 公开能量存储：网格的 IEnergyService 会把它计入全网格的能量平衡（IAEPowerStorage）。
+        setInternalPublicPowerStorage(true);
+    }
+
+    // ---- 组件槽：库存事件 ----
+
+    /** 组件变了就是一次结构变更（三个触发时机之一），同时把方块实体标脏。 */
+    @Override
+    public void onChangeInventory(AppEngInternalInventory inv, int slot) {
+        if (!this.loading) {
+            rebuildStructure();
+        }
+    }
+
+    /** 库存的任何改动都要落盘：这一条以前是暗的（靠重建结构顺带 setChanged），现在钉死在接口上。 */
+    @Override
+    public void saveChangedInventory(AppEngInternalInventory inv) {
+        setChanged();
+    }
+
+    @Override
+    public boolean isClientSide() {
+        return this.level != null && this.level.isClientSide();
+    }
+
+    // ---- 能量池 ----
+
+    /**
+     * 整段结构的容量上限（AE）。
+     *
+     * <p>上限是算出来的而不是存下来的：它随组件与结构变化，存一份就会与 {@link #stats()} 脱节。</p>
+     */
+    @Override
+    public double getInternalMaxPower() {
+        return (double) stats().totalCapacity();
+    }
+
+    /**
+     * 外部（FE）送进来的能量往哪去。<b>非核心一律转交核心</b>：能量只存在核心那一个池子里。
+     *
+     * <p>这是「任何模块的面都能输入 FE」的落点——每个模块都暴露能力，但收到的能量都写成同一个池子。
+     * 核心不在场时退回写自己那份，不至于把送进来的能量直接丢掉。</p>
+     */
+    @Override
+    protected double funnelPowerIntoStorage(double power, Actionable mode) {
+        var core = resolveCore();
+        if (core != null && core != this) {
+            return core.funnelPowerIntoStorage(power, mode);
+        }
+        double leftover = super.funnelPowerIntoStorage(power, mode);
+        if (mode == Actionable.MODULATE) {
+            recordInput(power - leftover, mode);
+        }
+        return leftover;
+    }
+
+    /**
+     * 记一笔「本 tick 收进来多少 AE」。
+     *
+     * <p>界面上那行「输入速率」的数据源。没有 ticker：读的时候拿游戏时间对一下，过期（超过
+     * {@link #INPUT_RATE_TTL_TICKS}）的就当 0。</p>
+     *
+     * <p><b>只记真动作</b>：AE2 的 {@code ForgeEnergyAdapter} 会先拿 {@code Actionable.SIMULATE} 探一下
+     * 能收多少（试探不入账），那一次也得走 {@code funnelPowerIntoStorage}。把模拟也记进去会报出虚高值
+     * ——「看着收了一大笔，其实一滴没进」。</p>
+     */
+    private void recordInput(double ae, Actionable mode) {
+        if (mode == Actionable.SIMULATE) {
+            return;
+        }
+        long amount = ae > 0.0 ? Math.round(ae) : 0L;
+        if (amount <= 0L || this.level == null) {
+            return;
+        }
+        long now = this.level.getGameTime();
+        if (now == this.inputRateTick) {
+            this.inputRateThisTick += amount;
+        } else {
+            this.inputRateTick = now;
+            this.inputRateThisTick = amount;
+        }
+        this.lastInputTick = now;
+    }
+
+    /**
+     * 本 tick 收进来的 AE（输入速率）。
+     *
+     * <p>不是速率上限，是**实测值**：上一 tick 有能量进来而这一 tick 没有时，这里会回到 0——这正是界面上
+     * 那条「输入速率」进度条要的效果（没人供电时它就是空的）。</p>
+     */
+    public long inputRate() {
+        var core = resolveCore();
+        if (core != null && core != this) {
+            return core.inputRate();
+        }
+        if (this.level == null || this.inputRateTick == Long.MIN_VALUE) {
+            return 0L;
+        }
+        long age = this.level.getGameTime() - this.inputRateTick;
+        return age >= 0 && age < INPUT_RATE_TTL_TICKS ? this.inputRateThisTick : 0L;
+    }
+
+    /**
+     * 只进不出的 FE 面。
+     *
+     * <p>能力注册拿到的是它：接收照常（走 AE2 自己的适配器，比例跟随整合包配置），但存量与抽取一律为 0
+     * ——本模组不存 FE，FE 进来当场就变成 AE（见 {@link InsertOnlyEnergyStorage}）。</p>
+     */
+    @Nullable
+    public IEnergyStorage getFeInput(@Nullable Direction side) {
+        var delegate = getEnergyStorage(side);
+        if (delegate == null) {
+            return null;
+        }
+        if (this.feInput == null) {
+            this.feInput = new InsertOnlyEnergyStorage(delegate);
+        }
+        return this.feInput;
+    }
+
+    /** 还差多少才满；非核心问的是核心的池子（见 {@link #funnelPowerIntoStorage}）。 */
+    @Override
+    protected double getFunnelPowerDemand(double maxRequired) {
+        var core = resolveCore();
+        if (core != null && core != this) {
+            return core.getFunnelPowerDemand(maxRequired);
+        }
+        return super.getFunnelPowerDemand(maxRequired);
+    }
+
+    /**
+     * 当前储能（AE）。
+     *
+     * <p>不论问到哪一块，答的都是**整段结构**的那一份：能量物理上只存在核心，但界面、Jade 与物品提示
+     * 都是「看着哪一块问整段」，所以这里统一向核心取。核心不在场时退回自己那份。</p>
+     */
+    @Override
+    public double getInternalCurrentPower() {
+        var core = resolveCore();
+        if (core != null && core != this) {
+            return core.ownStoredEnergy();
+        }
+        return ownStoredEnergy();
+    }
+
+    /**
+     * 当前储能（AE）：追核心，界面与 Jade 都读它。
+     *
+     * <p>存在的原因：{@link #getInternalCurrentPower()} 是个会被继承链反复调用的入口，追核心那一步只能写在它
+     * 里面；真正读自己值时需要一个不会再追一次的出口，否则就是递归。</p>
+     */
+    private double ownStoredEnergy() {
+        return super.getInternalCurrentPower();
+    }
+
+    /**
+     * 把整段结构的储能收拢到核心（第一次成型时用）。
+     *
+     * <p><b>读的是本机值，不是 {@link #getInternalCurrentPower()}</b>：那个访问器会追到核心，已成型结构重扫时
+     * 逐块求和会变成 {@code E × N}，池子被凭空抬高 N 倍。触发很常见——成型后在结构里改一个组件就会重扫。</p>
+     */
+    private long localStoredEnergy() {
+        double local = ownStoredEnergy();
+        return local > 0.0 ? Math.round(local) : 0L;
+    }
+
+    /** 当前储能取整（AE），给界面与 Jade 用。 */
+    public long storedEnergy() {
+        return Math.max(0L, Math.round(getInternalCurrentPower()));
+    }
+
+    /**
+     * 能量状态变了（从满变不满、或从空变不空）时告诉网格。
+     *
+     * <p>不发这条的后遗症是上游注释里写的那句：这个存储会「不充也不放」——网格把它当成了永远满（或永远空），
+     * 于是不再向它做能量平衡。</p>
+     */
+    @Override
+    protected void emitPowerStateEvent(appeng.api.networking.events.GridPowerStorageStateChanged.PowerEventType type) {
+        getMainNode().ifPresent(grid -> grid.postEvent(
+                new appeng.api.networking.events.GridPowerStorageStateChanged(this, type)));
+    }
+
+    /**
+     * 网格接入面：<b>只有核心暴露六个面</b>。
+     *
+     * <p>非核心返回空集，于是它的网格节点没法接进任何网格（节点存在但不参与），等价于「网络节点仅核心注册」。
+     * 核心身份会在结构重算时变化，所以这里每次现算，并在身份变化后调一次
+     * {@code onGridConnectableSidesChanged()} 让父类把结果推给节点。</p>
+     */
+    @Override
+    public java.util.Set<Direction> getGridConnectableSides(appeng.api.orientation.BlockOrientation orientation) {
+        return isCore() ? java.util.EnumSet.allOf(Direction.class) : java.util.EnumSet.noneOf(Direction.class);
+    }
+
+    /** 我是不是这一段的核心（或未成型的独立元件）。 */
+    public boolean isCore() {
+        return this.corePos == null;
+    }
+
+    private static EnergyCellTier requireTier(BlockState state) {
+        if (state.getBlock() instanceof EnergyCellModuleBlock module) {
+            return module.tier();
+        }
+        // 方块实体类型与方块是绑死的，走到这里说明注册表被改乱了。宁可当场炸，也不要静默按某一档算账。
+        throw new IllegalStateException("能源模块方块实体挂在了非模块方块上：" + state);
+    }
+
+    public EnergyCellTier tier() {
+        return this.tier;
+    }
+
+    /**
+     * 组件槽对自动化（导出/输出总线、ME 接口）的可写面。
+     *
+     * <p><b>只进不出</b>，且只在成型后开口：组件槽是装上去就算账的配置位，不是库存；未成型时 GUI 打不开，
+     * 此时还能被塞东西就会出现「东西进去了但玩家管不了」。门禁与 GUI 一致（{@link StorageComponents#isComponent}）。</p>
+     *
+     * <p>每次能力查询现建一个包装（轻对象，只持有委托与两个判定），不缓存：结构随时可能被拆。</p>
+     */
+    public IItemHandler componentItemHandler() {
+        return new ComponentInsertOnlyItemHandler(this.components.toItemHandler(), this::isFormed,
+                StorageComponents::isComponent);
+    }
+
+    /**
+     * 组件槽交给父类保管：
+     *
+     * <p>{@code AEBaseInvBlockEntity} 已经用这个方法把库存的存、读、掉落、清空都包了（NBT 键是
+     * {@code inv}）。自己再写一遍就是两份实现——而两份实现迟早会分叉。</p>
+     *
+     * <p>取名与 {@code BlockEntity#components}（数据组件表）冲突，方法名只能叫这个。</p>
+     */
+    @Override
+    public InternalInventory getInternalInventory() {
+        return this.components;
+    }
+
+    /**
+     * 这一块的 GUI 该显示的账目。
+     *
+     * <p>核心不在场（区块未加载、或它已被拆）时退化为「单块」——显示一个偏小的数总好过整屏报错。</p>
+     */
+    public StructureStats stats() {
+        if (this.corePos == null) {
+            return this.ownStats;
+        }
+        var core = resolveCore();
+        return core != null ? core.ownStats : StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+    }
+
+    /**
+     * 这一块所在的段是不是已经成型。
+     *
+     * <p>成型 = 结构成立（实心立方体、边长落在合法区间；等级可混拼，见 {@code StructureStats.tierMask}）。单块与
+     * 「拼不成立方体的一堆」都不算——界面只在成型后才有东西可管（见 {@code docs/ARCHITECTURE.md} §3.2），
+     * 未成型右键不开屏。</p>
+     *
+     * <p>判据取核心手里的结构范围，而不是另加一个方块状态属性：成型与否不换模型，这里读的就是结构检测的结果，
+     * 与界面上的账目同源。</p>
+     */
+    public boolean isFormed() {
+        var core = resolveCore();
+        return core != null && core.structureOrigin != null && core.ownStats.side() > 1;
+    }
+
+    // ---- 结构生命周期 ----
+
+    /**
+     * 从这一块出发重算结构。
+     *
+     * <p>三种结论各走一路：成立就落到整段，确定不成立就回退成独立元件，<b>判不了（邻居没加载完）就什么都不做</b>
+     * ——保留上一次算出来的状态。把「看不到」当成「不成型」，一次跨区块的区块加载就能把一段好结构判没。</p>
+     */
+    public void rebuildStructure() {
+        var level = this.level;
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        var result = MultiblockScanner.scan(level, worldPosition);
+        switch (result.status()) {
+            case FORMED -> applyStructure(result.layout());
+            case NOT_FORMED -> clearStructure();
+            case INDETERMINATE -> {
+                // 有意留空：等下一次触发（放置 / 破坏 / 组件变化 / 玩家右键）再算。
+            }
+        }
+    }
+
+    /** 放置路径：从新方块出发检测。由方块调用。 */
+    public static void rebuildAt(Level level, BlockPos pos) {
+        if (level.isClientSide()) {
+            return;
+        }
+        if (level.getBlockEntity(pos) instanceof EnergyCellModuleBlockEntity module) {
+            module.rebuildStructure();
+        }
+    }
+
+    /**
+     * 破坏路径：先让被拆的那一块所属整段失效，再从六个邻居各自重算。
+     *
+     * <p>「先整段失效」不能省：一段 3³ 被拆掉一块之后，剩下 26 块里的任何一块单独重扫都会失败，但失败只会
+     * 让它自己回退——其余 25 块还留着指向已消失结构的核心引用。所以这里拿被拆那一块手里的范围，把整段一起
+     * 清掉，再由邻居们各自回到「独立元件」。</p>
+     */
+    public static void onModuleRemoved(Level level, BlockPos pos) {
+        if (level.isClientSide()) {
+            return;
+        }
+        if (level.getBlockEntity(pos) instanceof EnergyCellModuleBlockEntity module) {
+            module.clearStructure();
+        }
+        var cursor = new BlockPos.MutableBlockPos();
+        for (var direction : DIRECTIONS) {
+            cursor.setWithOffset(pos, direction);
+            rebuildAt(level, cursor);
+        }
+    }
+
+    /** 把自己所参与的那一整段清成独立元件；不属于任何成型结构时只清自己。 */
+    private void clearStructure() {
+        var core = resolveCore();
+        if (core == null) {
+            becomeStandalone();
+            return;
+        }
+        var origin = core.structureOrigin;
+        int side = core.ownStats.side();
+        if (origin == null || side <= 1 || core.level == null) {
+            core.becomeStandalone();
+            if (core != this) {
+                becomeStandalone();
+            }
+            return;
+        }
+        var layout = new MultiblockScanner.Layout(origin, side);
+        var cursor = new BlockPos.MutableBlockPos();
+        int count = layout.moduleCount();
+        for (int index = 0; index < count; index++) {
+            layout.modulePos(index, cursor);
+            if (core.level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module) {
+                module.becomeStandalone();
+            }
+        }
+        becomeStandalone();
+    }
+
+    /** 退化为独立元件：自己就是核心，账目按自己槽里的组件算。 */
+    private void becomeStandalone() {
+        var single = StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+        boolean wasCore = isCore();
+        boolean changed = this.corePos != null || this.structureOrigin != null || !this.ownStats.equals(single);
+        this.corePos = null;
+        this.structureOrigin = null;
+        this.ownStats = single;
+        this.rowCache = null;
+        // 池子的上限跟着账目走；能量不搬（它本来就在核心里，而「核心」现在就是自己）。
+        setInternalMaxPower((double) single.totalCapacity());
+        afterStructureReferenceChanged(wasCore);
+        if (changed) {
+            setChanged();
+        }
+    }
+
+    /**
+     * 结构引用变完之后的收尾：核心身份可能变了，要让网格节点重新拿一次「暴露在哪些面」。
+     *
+     * <p>为什么不在身份真的变了时才调：{@code setExposedOnSides} 是幂等的，而判断「真变了」需要跟上一轮的
+     * 集合比；调用次数与结构变更次数同量级，不值当为此多存一份状态。</p>
+     */
+    private void afterStructureReferenceChanged(boolean wasCore) {
+        if (wasCore != isCore()) {
+            onGridConnectableSidesChanged();
+        }
+    }
+
+    /**
+     * 把一次成功的检测结果落到整段上。
+     *
+     * <p>分两趟：第一趟算总量（逐块求和，见 {@link CellMath}），第二趟写引用与账目。第一趟发现任何一块已经
+     * 不在了就整轮回作废——结构正在变，等下一次触发重算更安全，也能避免写出半截账目。</p>
+     */
+    private void applyStructure(MultiblockScanner.Layout layout) {
+        var level = this.level;
+        if (level == null) {
+            return;
+        }
+        int count = layout.moduleCount();
+        var cursor = new BlockPos.MutableBlockPos();
+
+        long capacity = 0L;
+        long rate = 0L;
+        // 混等级：每块按自己那一档算 D 与 D_v，再把和收口；整段的「代表等级」取出现过的最高档，
+        // 只用来配 V_max / V_in_max 这两个上限（口径见 StructureStats#tier）。
+        var capTier = tier;
+        int tierMask = 0;
+        for (int index = 0; index < count; index++) {
+            layout.modulePos(index, cursor);
+            if (!(level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module)) {
+                return;
+            }
+            var moduleTier = module.tier();
+            // 两侧吃的是不同的组件：容量看存储组件，速率看能量存储组件（各管一条公式）。
+            capacity += CellMath.moduleCapacity(moduleTier, module.componentCapacitiesScratch());
+            rate += CellMath.moduleTransferRate(moduleTier, module.energyComponentsScratch());
+            tierMask |= StructureStats.tierBit(moduleTier);
+            if (moduleTier.ordinal() > capTier.ordinal()) {
+                capTier = moduleTier;
+            }
+        }
+        var stats = StructureStats.of(capTier, tierMask, layout.side(), capacity,
+                CellMath.totalTransferRate(capTier, rate));
+
+        // 单一能量池：整段只留一份能量，落在核心（待定项 3：拆结构时能量留在核心方块）。
+        //
+        // 只在「刚进入这段结构」时搬运：已经在结构里的块重扫一次不该再搬一次，否则同一份能量会被反复相加、
+        // 池子随重扫次数放大。（成型后在结构里改一个组件就会重扫，这条路径很常走。）
+        long carried = 0L;
+        int newcomers = 0;
+        for (int index = 0; index < count; index++) {
+            layout.modulePos(index, cursor);
+            if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module
+                    && !isAlreadyPartOf(module, layout.origin())) {
+                carried += module.localStoredEnergy();
+                newcomers++;
+            }
+        }
+
+        for (int index = 0; index < count; index++) {
+            layout.modulePos(index, cursor);
+            if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module) {
+                double before = module.localStoredEnergy();
+                boolean core = module.worldPosition.equals(layout.origin());
+                module.applyStructureRef(layout.origin(), stats);
+                if (core) {
+                    // 核心自己那份已经在 before 里了，只补新进场的量；夹到整段容量上限内。
+                    module.setInternalCurrentPower(Math.min(before + carried, (double) capacity));
+                } else if (!isAlreadyPartOf(module, layout.origin())) {
+                    module.setInternalCurrentPower(0.0);
+                }
+            }
+        }
+    }
+
+    /** 这一块在本次落到该结构之前，是否已经在同一段结构里（是就不该再动它的能量）。 */
+    private static boolean isAlreadyPartOf(EnergyCellModuleBlockEntity module, BlockPos origin) {
+        return module.worldPosition.equals(origin) || origin.equals(module.corePos);
+    }
+
+    /** 写入结构引用。核心记范围与整段账目，其余块记核心位置与「自己那块」的账目（作为核心不在场时的退路）。 */
+    private void applyStructureRef(BlockPos origin, StructureStats stats) {
+        boolean isCore = worldPosition.equals(origin);
+        boolean wasCore = isCore();
+        BlockPos newCorePos = isCore ? null : origin;
+        BlockPos newOrigin = isCore ? origin : null;
+        var newStats = isCore ? stats : StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+
+        // 行表缓存无条件作废（包括下面提前 return 的那条路径）：
+        // 缓存键是账目快照，而“把两块方块的等级互换”这类改动可能让总容量/速率/边长/掩码恰好不变，
+        // 分组却变了。作废只花一次重建（下一次查询时），漏作废则会把模块挂到错的标题下。
+        this.rowCache = null;
+
+        // 上限无条件跟着账目走，包括下面提前 return 的那条路径：
+        // AE2 的内部池默认上限是 10 000 AE，漏设一次，存量就会被 setStored 静默夹到 1 万——
+        // 表现是「界面报得出真实容量、FE 却灌不进去」。
+        setInternalMaxPower((double) newStats.totalCapacity());
+
+        if (Objects.equals(this.corePos, newCorePos)
+                && Objects.equals(this.structureOrigin, newOrigin)
+                && this.ownStats.equals(newStats)) {
+            return;
+        }
+        this.corePos = newCorePos;
+        this.structureOrigin = newOrigin;
+        this.ownStats = newStats;
+        afterStructureReferenceChanged(wasCore);
+        setChanged();
+    }
+
+    @Nullable
+    private EnergyCellModuleBlockEntity resolveCore() {
+        if (this.corePos == null) {
+            return this;
+        }
+        if (this.level != null && this.level.getBlockEntity(this.corePos) instanceof EnergyCellModuleBlockEntity core) {
+            return core;
+        }
+        return null;
+    }
+
+    /**
+     * 把窗口内的模块收进 {@code out}。
+     *
+     * <p>遍历顺序与 {@link MultiblockScanner.Layout#modulePos} 一致，且只跟坐标有关——窗口滑动、结构重算之后
+     * 同一个下标必须还是同一块，否则菜单里的槽位会指到别的方块上。</p>
+     *
+     * @param startIndex 起始下标（模块序号，不是行号）
+     * @param limit      最多收几块
+     */
+    /**
+     * 结构里第 {@code index} 块模块的方块实体（按 {@link MultiblockScanner.Layout#modulePos} 的顺序）；
+     * 未成型、越界或那块不在场时给 {@code null}。
+     */
+    @Nullable
+    public EnergyCellModuleBlockEntity moduleAt(int index) {
+        var level = this.level;
+        if (level == null || index < 0) {
+            return null;
+        }
+        var core = resolveCore();
+        if (core == null) {
+            return index == 0 ? this : null;
+        }
+        var origin = core.structureOrigin;
+        int side = core.ownStats.side();
+        if (origin == null || side <= 1) {
+            return index == 0 ? core : null;
+        }
+        var layout = new MultiblockScanner.Layout(origin, side);
+        if (index >= layout.moduleCount()) {
+            return null;
+        }
+        var cursor = new BlockPos.MutableBlockPos();
+        layout.modulePos(index, cursor);
+        return level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module ? module : null;
+    }
+
+    /**
+     * 整段的行表（标题行按等级分组、模块行每行 3 个），见 {@link TerminalRows}。
+     *
+     * <p>缓存到「账目快照」上：行表只取决于哪一块是哪一档，而那段信息不会比账目变得更频——结构或组件一变，
+     * 账目快照就换了一份新的（{@link StructureStats#equals}），缓存自然失效。重算一次要逐块读方块状态，
+     * 而滚动窗口每帧都可能问它，所以不能每次都现算。</p>
+     */
+    public List<TerminalRows.Row> rows() {
+        var core = resolveCore();
+        if (core == null) {
+            core = this;
+        }
+        if (core.rowCache != null && core.rowCacheStats != null && core.rowCacheStats.equals(core.ownStats)) {
+            return core.rowCache;
+        }
+        var level = core.level;
+        var rows = new ArrayList<TerminalRows.Row>();
+        var origin = core.structureOrigin;
+        int side = core.ownStats.side();
+        if (level == null || origin == null || side <= 1) {
+            // 未成型（或核心不在场）：只有自己一块，仍然给它一条标题 + 一条模块行，界面不至于没头没尾。
+            rows.add(TerminalRows.Row.title(core.tier));
+            rows.add(new TerminalRows.Row(null, 0, 1, new int[] { 0 }));
+        } else {
+            var layout = new MultiblockScanner.Layout(origin, side);
+            int count = layout.moduleCount();
+            TerminalRows.build(count, index -> tierOfModuleAt(level, layout, index), rows);
+        }
+        core.rowCache = rows;
+        core.rowCacheStats = core.ownStats;
+        return rows;
+    }
+
+    /** 结构里第 {@code index} 块是哪个等级；那块不在场时给 {@code null}（不排进任何组）。 */
+    @Nullable
+    private static EnergyCellTier tierOfModuleAt(Level level, MultiblockScanner.Layout layout, int index) {
+        var cursor = new BlockPos.MutableBlockPos();
+        layout.modulePos(index, cursor);
+        if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module) {
+            return module.tier();
+        }
+        return level.getBlockState(cursor).getBlock() instanceof EnergyCellModuleBlock block ? block.tier() : null;
+    }
+
+    /**
+     * 本块槽里组件的容量值，直接喂给 {@link CellMath}。
+     *
+     * <p>复用同一块数组是为了不在逐块汇总时分配 4096 个小数组。返回值<b>只读且随时会被下一次调用覆盖</b>，
+     * 调用方要么当场用完，要么自己复制一份。</p>
+     */
+    private long[] componentCapacitiesScratch() {
+        Arrays.fill(capacityScratch, 0L);
+        int slots = Math.min(components.size(), capacityScratch.length);
+        for (int slot = 0; slot < slots; slot++) {
+            capacityScratch[slot] = StorageComponents.capacityOf(components.getStackInSlot(slot));
+        }
+        return capacityScratch;
+    }
+
+    /**
+     * 同一批槽位里<b>能量存储组件</b>的值，喂给速率侧公式（见 {@code StorageComponents#energyOf}）。
+     *
+     * <p>与 {@link #componentCapacitiesScratch()} 同一个契约：同一块数组、只读到下一次调用为止。</p>
+     */
+    private long[] energyComponentsScratch() {
+        Arrays.fill(energyScratch, 0L);
+        int slots = Math.min(components.size(), energyScratch.length);
+        for (int slot = 0; slot < slots; slot++) {
+            energyScratch[slot] = StorageComponents.energyOf(components.getStackInSlot(slot));
+        }
+        return energyScratch;
+    }
+
+    // ---- 渲染：连接状态 ----
+
+    /** 六向连接位。空集合 = 孤零零一块，四周画满自己的边框。 */
+    private EnumSet<Direction> getConnections() {
+        var connections = EnumSet.noneOf(Direction.class);
+        var level = this.level;
+        if (level == null) {
+            return connections;
+        }
+        var cursor = new BlockPos.MutableBlockPos();
+        for (var direction : DIRECTIONS) {
+            cursor.setWithOffset(worldPosition, direction);
+            if (EnergyCellModuleBlock.isModule(level.getBlockState(cursor))) {
+                connections.add(direction);
+            }
+        }
+        return connections;
+    }
+
+    @Override
+    public ModelData getModelData() {
+        return EnergyCellModuleModelData.create(getConnections());
+    }
+
+    // ---- 存档 ----
+
+    @Override
+    public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
+        super.saveAdditional(data, registries);
+        // 组件槽由父类写（NBT 键 inv），这里只管结构引用。
+        // 能量不单独存：它跟着方块实体自己的能量字段（父类的 internalCurrentPower）。
+
+        if (this.corePos != null) {
+            // 非核心：只记「我的核心在哪」。账目就是自己那块，读档时现算，存了反而多一份会对不上的数。
+            data.putLong("core", this.corePos.asLong());
+            return;
+        }
+        if (this.structureOrigin != null) {
+            // 核心：记范围与整段账目。
+            data.putLong("origin", this.structureOrigin.asLong());
+            data.putInt("side", this.ownStats.side());
+            data.putLong("capacity", this.ownStats.totalCapacity());
+            data.putLong("rate", this.ownStats.totalTransferRate());
+            // 混等级：整段出现过哪几档要跟着走。代表等级（取最高档）由掩码现推，不另存一份会对不上的数。
+            data.putInt("tierMask", this.ownStats.tierMask());
+        }
+    }
+
+    /**
+     * 存档里的等级掩码 → 代表等级（最高的那一档）。
+     *
+     * <p>掩码缺失（旧存档）或一个位都对不上时，退到「这一块自己的档」；旧存档必然是整段同档，此时自身档恰好
+     * 就是正确档。</p>
+     *
+     * <p>推错的影响：容量直接读存档里的数，不受影响；但 {@code T_in = min(T_v × f_in, V_in_max)} 与 {@code T_v}
+     * 的收口都要用这个档，推低会把两个上限都取小。所以调用方拿到它之后必须拿它把 {@code rate} 重新夹一次
+     * （见 {@link #loadTag}）——不能直接把存档里的 rate 当结果。</p>
+     */
+    private EnergyCellTier highestTier(int tierMask) {
+        var highest = tier;
+        for (var candidate : EnergyCellTier.values()) {
+            if ((tierMask & StructureStats.tierBit(candidate)) != 0 && candidate.ordinal() > highest.ordinal()) {
+                highest = candidate;
+            }
+        }
+        return highest;
+    }
+
+    @Override
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        // 先置位再交给父类：父类读库存用的是 setItemDirect，会走到 onContentsChanged。
+        this.loading = true;
+        try {
+            super.loadTag(data, registries);
+        } finally {
+            this.loading = false;
+        }
+        this.corePos = data.contains("core") ? BlockPos.of(data.getLong("core")) : null;
+        this.structureOrigin = data.contains("origin") ? BlockPos.of(data.getLong("origin")) : null;
+
+        // 引用与账目分开处理：非核心的账目本来就是「自己那块」，不能因为它的 side 恒为 1 而把有效的核心引用丢掉
+        // ——丢了会让重载世界之后的非核心方块在界面上退化为单块，直到下一次放置/破坏/组件变化才自愈。
+        if (this.corePos != null) {
+            this.structureOrigin = null;
+            this.ownStats = StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+            setInternalMaxPower((double) this.ownStats.totalCapacity());
+            return;
+        }
+
+        int side = data.getInt("side");
+        long capacity = data.getLong("capacity");
+        long rate = data.getLong("rate");
+        // 存档里的边长可能来自别的版本、或被改坏：落在合法区间外就当独立元件，不拿它当结构范围用。
+        if (this.structureOrigin == null || side <= 1 || side > ModularCellConstants.MAX_SIDE
+                || capacity < 0L || rate < 0L) {
+            this.structureOrigin = null;
+            this.ownStats = StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+            setInternalMaxPower((double) this.ownStats.totalCapacity());
+            return;
+        }
+        int tierMask = data.getInt("tierMask");
+        var capTier = highestTier(tierMask);
+        // rate 必须重新收口，不能直接把存档里的数当结果：
+        // 上一版（V_max 还没接上时）写下的存档里 rate 是未收口的和，掩码丢失时代表等级也可能取小——
+        // 两者都会得出一份违反 T_v = min(Σ D_vj, V_max) 的账目，而这份账目正是能量面的口径。
+        this.ownStats = StructureStats.of(capTier, tierMask, side, capacity,
+                CellMath.totalTransferRate(capTier, rate));
+
+        // 池子上限跟着账目走。
+        //
+        // 这一行不能省：AE2 的父类构造时把内部上限置为默认的 10 000，而读档写能量走的是
+        // setStored → 按上限夹；真实上限来自 stats（结构容量）。漏了它，一份 200 kAE 的存档读进来会被
+        // 静默削到 10 000，而 getAEMaxPower 报的仍是真实容量——「报得出、灌不进」。
+        setInternalMaxPower((double) this.ownStats.totalCapacity());
+    }
+
+    /**
+     * 延迟初始化里把「暴露面」按当前身份重算一次。
+     *
+     * <p>不能只靠结构变更时那一次：构造阶段 AE2 自己先调过一次
+     * {@code onGridConnectableSidesChanged()}，那一刻还是「核心」（{@code corePos} 为 null），暴露面
+     * 被存进了节点的 initData；读档把 {@code corePos} 填上后若不再改，重载出来的非核心会**六面全开**
+     * 且带着 {@code IAEPowerStorage} 接入网格——网格里会出现与方块数同规模的存储节点，
+     * 直接违背「只有一个网络节点」。这个方法幂等（见 {@code afterStructureReferenceChanged}），
+     * 重复调不花代价。</p>
+     */
+    @Override
+    public void onReady() {
+        super.onReady();
+        onGridConnectableSidesChanged();
+    }
+
+    /**
+     * 组件槽里的东西也算「内部内容」，拆卸时要一并交出来。
+     *
+    /**
+     * 组件槽的掉落与清空都交给父类。
+     *
+     * <p>{@code AEBaseInvBlockEntity} 已经把 {@code getInternalInventory()} 返回的库存接进了
+     * {@code addAdditionalDrops} / {@code clearContent}（它自己那套两方法契约）——这里再写一遍就是第二份
+     * 实现，而两份实现迟早会分叉（例如重复掉落、或某条路径漏清）。</p>
+     */
+}
