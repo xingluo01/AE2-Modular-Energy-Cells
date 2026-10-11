@@ -54,9 +54,9 @@
 
 ### 2.1 等级（`EnergyCellTier`）
 
-三个等级：基础 / 致密 / 超密。公式要用的五个数值全部集中在 `common/EnergyCellTier.java`：基础容量 A、基础速率 V、组件槽位 C_tier、总速率上限 V_max、总输入速率上限 V_in_max。
+三个等级：基础 / 致密 / 超密。公式要用的五个数值全部集中在 `common/EnergyCellTier.java`：基础容量 A、基础速率 V、组件槽位 C_tier、每块速率上限 V_max、每块输入速率上限 V_in_max（整段上限 = 各块之和）。
 
-| 等级 | A 基础容量 | 槽位 C_tier | V 基础速率 | V_max 总速率上限 | V_in_max 总输入上限 |
+| 等级 | A 基础容量 | 槽位 C_tier | V 基础速率 | V_max 每块速率上限 | V_in_max 每块输入上限 |
 |---|---:|---:|---:|---:|---:|
 | 基础 | 200 000 AE | 1 | 1 000 AE/t | 16 000 AE/t | 8 000 AE/t |
 | 致密 | 1 600 000 AE | 2 | 8 000 AE/t | 128 000 AE/t | 64 000 AE/t |

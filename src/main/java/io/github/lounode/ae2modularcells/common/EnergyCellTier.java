@@ -5,7 +5,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * 模块方块的三个等级。
  *
- * <p>公式要用的五个数值（单模块基础容量、基础传输速率、组件槽位数、总速率上限、总输入速率上限）全部集中
+ * <p>公式要用的五个数值（单模块基础容量、基础传输速率、组件槽位数、每块速率上限、每块输入速率上限）全部集中
  * 在这里，平衡调整只动本文件；公式在 {@link io.github.lounode.ae2modularcells.common.logic.CellMath}，
  * 折扣与数量加成系数在 {@link ModularCellConstants}。</p>
  *
@@ -59,13 +59,13 @@ public enum EnergyCellTier {
         return componentSlots;
     }
 
-    /** 整段结构的总速率上限 V_max（AE/t）：{@code min(Σ 单模块速率, 本值)}。 */
+    /** 每块提供的速率上限 V_max（AE/t）；整段上限是逐块之和：{@code T_v = min(Σ D_vj, Σ V_max_j)}。 */
     public long maxTransferRate() {
         return maxTransferRate;
     }
 
     /**
-     * 整段结构的总输入速率上限 V_in_max（AE/t）。
+     * 每块提供的输入速率上限 V_in_max（AE/t）；整段上限同样是逐块之和。
      *
      * <p>当前三档都恰好是 {@link #maxTransferRate()} 的一半，而 {@code ModularCellConstants.INPUT_RATIO}
      * 也是 0.5，所以两道约束重合——把这个上限改小、或把 f_in 改成 1.0，它才会独立生效。</p>

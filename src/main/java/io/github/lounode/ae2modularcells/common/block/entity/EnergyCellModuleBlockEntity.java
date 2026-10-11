@@ -971,9 +971,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
      * <p>掩码缺失（旧存档）或一个位都对不上时，退到「这一块自己的档」；旧存档必然是整段同档，此时自身档恰好
      * 就是正确档。</p>
      *
-     * <p>推错的影响：容量直接读存档里的数，不受影响；但 {@code T_in = min(T_v × f_in, V_in_max)} 与 {@code T_v}
-     * 的收口都要用这个档，推低会把两个上限都取小。所以调用方拿到它之后必须拿它把 {@code rate} 重新夹一次
-     * （见 {@link #loadTag}）——不能直接把存档里的 rate 当结果。</p>
+     * <p>推错的影响：容量直接读存档里的数，不受影响；但两个上限的和（{@code Σ V_max_j} / {@code Σ V_in_max_j}）
+     * 老存档里没有，只能退用「代表等级」的上限来收口 {@code T_v = min(Σ D_vj, ·)} 与
+     * {@code T_in = min(T_v × f_in, ·)}，推低会把两个上限都取小。所以调用方拿到它之后必须拿它把 {@code rate}
+     * 重新夹一次（见 {@link #loadTag}）——不能直接把存档里的 rate 当结果。混拼结构的这个偏差会持续到下一次
+     * 结构变更（那时会重算并按新口径存下两个和）。</p>
      */
     private EnergyCellTier highestTier(int tierMask) {
         var highest = tier;
