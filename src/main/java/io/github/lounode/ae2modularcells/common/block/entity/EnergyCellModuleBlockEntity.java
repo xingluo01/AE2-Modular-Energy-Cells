@@ -94,16 +94,24 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
     @Nullable
     private IEnergyStorage feInput;
 
-    /** 最后一次实测的输入速率（AE/t），配 {@link #inputRateTick} 判断寿命。 */
-    private long inputRateThisTick;
-    private long inputRateTick = Long.MIN_VALUE;
+    /**
+     * 本 tick 已经收进来多少 AE（<b>入力额度</b>用），配 {@link #inputSpentTick} 判断是否过期。
+     *
+     * <p>它是「严格本 tick」的计数：限流看的是这个数，所以不能被显示用的峰值/衰减影响。</p>
+     */
+    private long inputSpentThisTick;
+    private long inputSpentTick = Long.MIN_VALUE;
+
+    /** 显示用的峰值：窗口内每 tick 收得最多的一次；配 {@link #lastInputTick} 做线性衰减。 */
+    private long inputRatePeak;
 
     /**
-     * 一个实测值的寿命（tick）。
+     * 显示窗口与额度重置的时长（tick）。
      *
-     * <p>「本 tick 收了多少」是个脉冲式的量：下一 tick 没能量进来就回 0 了。而界面是隔一会儿才采样一次
-     * （菜单同步不是每 tick 都发生），采样点绝大多数落在没输入的 tick 上，于是用 FE 灌能时那根条子看起来
-     * 根本不动。所以给每个实测值一个寿命：10 tick 内没有新值就归零，期间它一直有效。</p>
+     * <p>界面上那根「输入速率」条读的是一个脉冲式的量（本 tick 收了多少）：没有 ticker，下一 tick 没能量进来
+     * 就回 0了，而界面隔一会儿才采样一次——采样点大多落在没输入的 tick 上，看起来就是「条子不动」。
+     * 所以给实测值一个窗口：<b>窗口内峰值保持 + 线性衰减</b>，持续供能时显示满值，停供后 0.5 秒内线性回落。
+     * 硬保持到点再归零会让数字一跳一跳，衰减看上去更像仪表。</p>
      */
     private static final int INPUT_RATE_TTL_TICKS = 10;
 
@@ -207,10 +215,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
      */
     private double remainingInputBudget() {
         long limit = stats().totalInputRate();
-        if (this.level == null || this.inputRateTick != this.level.getGameTime()) {
+        if (this.level == null || this.inputSpentTick != this.level.getGameTime()) {
             return Math.max(0L, limit);
         }
-        return Math.max(0L, limit - this.inputRateThisTick);
+        return Math.max(0L, limit - this.inputSpentThisTick);
     }
 
     /**
@@ -232,11 +240,18 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
             return;
         }
         long now = this.level.getGameTime();
-        if (now == this.inputRateTick) {
-            this.inputRateThisTick += amount;
+        // 额度计数：严格按 tick 累加。
+        if (now == this.inputSpentTick) {
+            this.inputSpentThisTick += amount;
         } else {
-            this.inputRateTick = now;
-            this.inputRateThisTick = amount;
+            this.inputSpentTick = now;
+            this.inputSpentThisTick = amount;
+        }
+        // 显示峰值：上一次输入在半秒之前就开新窗口，否则取窗口内最大值。
+        if (this.lastInputTick == Long.MIN_VALUE || now - this.lastInputTick >= INPUT_RATE_TTL_TICKS) {
+            this.inputRatePeak = amount;
+        } else {
+            this.inputRatePeak = Math.max(this.inputRatePeak, amount);
         }
         this.lastInputTick = now;
     }
@@ -244,19 +259,26 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
     /**
      * 本 tick 收进来的 AE（输入速率）。
      *
-     * <p>不是速率上限，是**实测值**：上一 tick 有能量进来而这一 tick 没有时，这里会回到 0——这正是界面上
-     * 那条「输入速率」进度条要的效果（没人供电时它就是空的）。</p>
+     * <p>不是速率上限，是**实测值**：显示口径是「窗口内峰值 + 线性衰减」——持续供能时保持满值，
+     * 停供后 0.5 秒内线性回落（这正是界面上那条输入进度条要的效果：没人供电时它自己降下去）。</p>
      */
     public long inputRate() {
         var core = resolveCore();
         if (core != null && core != this) {
             return core.inputRate();
         }
-        if (this.level == null || this.inputRateTick == Long.MIN_VALUE) {
+        if (this.level == null || this.lastInputTick == Long.MIN_VALUE) {
             return 0L;
         }
-        long age = this.level.getGameTime() - this.inputRateTick;
-        return age >= 0 && age < INPUT_RATE_TTL_TICKS ? this.inputRateThisTick : 0L;
+        long age = this.level.getGameTime() - this.lastInputTick;
+        if (age < 0L || age > INPUT_RATE_TTL_TICKS) {
+            // 上一次真收进能量已超过一个窗口：归零（负 age 防时钟回拨/跨维度）。
+            return 0L;
+        }
+        // age <= 1 视为满值：写入（recordInput）与读取（菜单采样）不一定落在同一个 tick，
+        // 晚一拍就衰减会让持续供能的读数在 peak 与 0.9×peak 之间抖，像仪表坏了。
+        double decay = age <= 1L ? 1.0D : 1.0D - (double) (age - 1L) / INPUT_RATE_TTL_TICKS;
+        return Math.max(0L, Math.round(this.inputRatePeak * decay));
     }
 
     /**
