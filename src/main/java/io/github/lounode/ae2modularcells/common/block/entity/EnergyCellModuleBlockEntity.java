@@ -33,7 +33,7 @@ import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.StorageComponentTier;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage;
-import io.github.lounode.ae2modularcells.common.inventory.ComponentInsertOnlyItemHandler;
+import io.github.lounode.ae2modularcells.common.inventory.StructureComponentItemHandler;
 import io.github.lounode.ae2modularcells.common.logic.CellMath;
 import io.github.lounode.ae2modularcells.common.logic.MultiblockScanner;
 import io.github.lounode.ae2modularcells.common.logic.StructureStats;
@@ -80,6 +80,16 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
     private List<TerminalRows.Row> rowCache;
     @Nullable
     private StructureStats rowCacheStats;
+
+    /**
+     * 整段成员的缓存（与 {@link #rowCache} 同寿命）。
+     *
+     * <p>为什么需要：整段组件槽视图（{@link StructureComponentItemHandler}）会被导出总线在**同一次推送里**
+     * 反复问「第几个槽在哪」，而成员列表要逐块 {@code getBlockEntity}（上界 4096）。成员表与行表一样是
+     * 结构级稳定的量，所以在核心上缓一份、结构一变就作废，代价从「每次推送扫一遍」降到「每次结构变更扫一遍」。</p>
+     */
+    @Nullable
+    private List<EnergyCellModuleBlockEntity> memberCache;
 
     /** 逐块汇总时复用的暂存数组（容量侧：存储组件值），见 {@link #componentCapacitiesScratch()}。 */
     private final long[] capacityScratch = new long[ModularCellConstants.maxComponentSlots()];
@@ -392,16 +402,66 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
     }
 
     /**
-     * 组件槽对自动化（导出/输出总线、ME 接口）的可写面。
+     * 组件槽对自动化（导出/输出总线、ME 接口）的可写面：<b>整段结构</b>的视图。
      *
      * <p><b>只进不出</b>，且只在成型后开口：组件槽是装上去就算账的配置位，不是库存；未成型时 GUI 打不开，
      * 此时还能被塞东西就会出现「东西进去了但玩家管不了」。门禁与 GUI 一致（{@link StorageComponents#isComponent}）。</p>
      *
-     * <p>每次能力查询现建一个包装（轻对象，只持有委托与两个判定），不缓存：结构随时可能被拆。</p>
+     * <p>为什么是整段而不是「这一块自己的槽」：AE2 的导出/输出总线把目标钉在贴着的那一块上且长期缓存，
+     * 只暴露一块会让「这块满了」变成「怎么都塞不进去」。详见 {@link StructureComponentItemHandler}。</p>
      */
     public IItemHandler componentItemHandler() {
-        return new ComponentInsertOnlyItemHandler(this.components.toItemHandler(), this::isFormed,
-                StorageComponents::isComponent);
+        return new StructureComponentItemHandler(this);
+    }
+
+    /**
+     * 这一块的组件槽数（1 / 2 / 3，由等级决定）。整段视图要用它摊平下标。
+     */
+    public int componentSlotCount() {
+        return this.components.size();
+    }
+
+    /** 这一块第 {@code localSlot} 个组件槽里的东西；越界给空。 */
+    public ItemStack componentStack(int localSlot) {
+        return localSlot >= 0 && localSlot < this.components.size() ? this.components.getStackInSlot(localSlot)
+                : ItemStack.EMPTY;
+    }
+
+    /**
+     * 往这一块的第 {@code localSlot} 个组件槽插一件（自动化用）。
+     *
+     * <p>门禁与 GUI、与 Shift 手势一致：只收存储组件、且这一段得是成型的结构。返回剩余量（插不进就原样退回）。</p>
+     */
+    public ItemStack insertComponent(int localSlot, ItemStack stack, boolean simulate) {
+        if (stack.isEmpty() || localSlot < 0 || localSlot >= this.components.size()) {
+            return stack;
+        }
+        if (!isPartOfFormedStructure() || !StorageComponents.isComponent(stack)) {
+            return stack;
+        }
+        return this.components.insertItem(localSlot, stack, simulate);
+    }
+
+    /** 这一块的某个组件槽收不收这件东西（总线会用 {@code isItemValid} 做预判）。 */
+    public boolean isComponentSlotAcceptable(int localSlot, ItemStack stack) {
+        if (stack.isEmpty() || localSlot < 0 || localSlot >= this.components.size()) {
+            return false;
+        }
+        return isPartOfFormedStructure() && StorageComponents.isComponent(stack);
+    }
+
+    /**
+     * 这一块属于一段<b>成型结构</b>吗。
+     *
+     * <p>与 {@link #isFormed()} 分开：后者要求「核心当下拿得到」（会走核心区块），用于开屏与手势；
+     * 自动化这条路上，非核心块在核心区块未加载时不该因此被判定为「没成型」——它照样是自己那一段的一员，
+     * 写的是本块的槽。（否则总线会时灵时不灵，而玩家看不出为什么。）</p>
+     */
+    private boolean isPartOfFormedStructure() {
+        if (this.corePos != null) {
+            return true;
+        }
+        return this.structureOrigin != null && this.ownStats.side() > 1;
     }
 
     /**
@@ -536,6 +596,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         this.structureOrigin = null;
         this.ownStats = single;
         this.rowCache = null;
+        this.memberCache = null;
         // 池子的上限跟着账目走；能量不搬（它本来就在核心里，而「核心」现在就是自己）。
         setInternalMaxPower((double) single.totalCapacity());
         afterStructureReferenceChanged(wasCore);
@@ -644,6 +705,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         // 缓存键是账目快照，而“把两块方块的等级互换”这类改动可能让总容量/速率/边长/掩码恰好不变，
         // 分组却变了。作废只花一次重建（下一次查询时），漏作废则会把模块挂到错的标题下。
         this.rowCache = null;
+        this.memberCache = null;
 
         // 上限无条件跟着账目走，包括下面提前 return 的那条路径：
         // AE2 的内部池默认上限是 10 000 AE，漏设一次，存量就会被 setStored 静默夹到 1 万——
@@ -732,7 +794,13 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
     public List<EnergyCellModuleBlockEntity> structureModules() {
         var core = resolveCore();
         if (core == null) {
-            return List.of();
+            // 核心区块未加载 / 核心已被拆，而我自己是它的非核心：
+            // 这时整段视图不能给空表——导出总线早就把目标钉在这一块上了，给空表就变成「能塞却塞不进」。
+            // 退回「只有我一块」：插进本块自己的槽（这正是该做的事，组件本来就按块计）。
+            return List.of(this);
+        }
+        if (core.memberCache != null) {
+            return core.memberCache;
         }
         int count = Math.max(1, core.ownStats.moduleCount());
         var out = new ArrayList<EnergyCellModuleBlockEntity>(count);
@@ -742,7 +810,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
                 out.add(module);
             }
         }
-        return out;
+        core.memberCache = List.copyOf(out);
+        return core.memberCache;
     }
 
     /** 一次组件装入/替换的结果：有没有动手，以及被换下来的那一件（装入时为空）。 */

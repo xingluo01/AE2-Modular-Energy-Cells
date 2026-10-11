@@ -21,6 +21,8 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
+import appeng.api.AECapabilities;
+
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
@@ -155,9 +157,15 @@ public final class AEModularCellsRegistries {
                     (blockEntity, side) -> blockEntity.getFeInput(side));
             // 组件槽对自动化的面：AE2 的导出/输出总线找目标方块就是查这个能力
             // （上游 StorageExportStrategy 用 Capabilities.ItemHandler.BLOCK）。只进不出、只收存储组件、
-            // 未成型不开门——三条门禁都在 ComponentInsertOnlyItemHandler 里。
+            // 未成型不开门——三条门禁都在 StructureComponentItemHandler 里。
             event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, type.get(),
                     (blockEntity, side) -> blockEntity.componentItemHandler());
+            // 网格主机能力：<b>这一条不给就接不上线缆</b>。AE2 只在它自己的类型表上批量注册这个能力
+            // （上游 InitCapabilityProviders 遍历 AEBlockEntities.BLOCK_ENTITY_TYPES），第三方必须自己补；
+            // 线缆侧走 GridHelper#getNodeHost → 查的就是这个块能力（没有 instanceof 扫描）。
+            // 返回方块实体自己：它经 AENetworkedPoweredBlockEntity 已经持有可用的网格节点。
+            event.registerBlockEntity(AECapabilities.IN_WORLD_GRID_NODE_HOST, type.get(),
+                    (blockEntity, context) -> blockEntity);
         }
     }
 }
