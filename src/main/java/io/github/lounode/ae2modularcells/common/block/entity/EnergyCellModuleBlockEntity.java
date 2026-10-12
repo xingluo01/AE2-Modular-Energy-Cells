@@ -840,7 +840,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         for (int index = 0; index < count; index++) {
             layout.modulePos(index, cursor);
             if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module
-                    && !isAlreadyPartOf(module, layout.origin())) {
+                    && !isAlreadyPartOf(module, corePos)) {
                 carried += module.localStoredEnergy();
                 newcomers++;
             }
@@ -850,12 +850,12 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             layout.modulePos(index, cursor);
             if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module) {
                 double before = module.localStoredEnergy();
-                boolean core = module.worldPosition.equals(layout.origin());
+                boolean core = module.worldPosition.equals(corePos);
                 module.applyStructureRef(corePos, layout.origin(), stats);
                 if (core) {
                     // 核心自己那份已经在 before 里了，只补新进场的量；夹到整段容量上限内。
                     module.setInternalCurrentPower(Math.min(before + carried, (double) capacity));
-                } else if (!isAlreadyPartOf(module, layout.origin())) {
+                } else if (!isAlreadyPartOf(module, corePos)) {
                     module.setInternalCurrentPower(0.0);
                 }
             } else if (level.getBlockEntity(cursor) instanceof MonitorBlockEntity monitor) {
@@ -867,11 +867,16 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /** 这一块在本次落到该结构之前，是否已经在同一段结构里（是就不该再动它的能量）。 */
-    private static boolean isAlreadyPartOf(EnergyCellModuleBlockEntity module, BlockPos origin) {
-        return module.worldPosition.equals(origin) || origin.equals(module.corePos);
+    /**
+     * 这一块在本次落到该结构之前，是否已经在同一段结构里（是就不该再动它的能量）。
+     *
+     * <p>比较用的是<b>核心位置</b>而不是几何最小角：结构身份由核心认，不是由哪个角认。用错那个会把真正的
+     * 核心当成「新进场」——存量被归零、搬运量被丢弃，表现就是「每次重扫电量清空」。</p>
+     */
+    private static boolean isAlreadyPartOf(EnergyCellModuleBlockEntity module, BlockPos corePos) {
+        return module.worldPosition.equals(corePos) || corePos.equals(module.corePos);
     }
 
-    /** 写入结构引用。核心记范围与整段账目，其余块记核心位置与「自己那块」的账目（作为核心不在场时的退路）。 */
     /**
      * 布局里第一块储能模块的位置（确定性：按 {@code modulePos} 的顺序，第一块中选的永远相同）。
      *
@@ -895,6 +900,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         return null;
     }
 
+    /** 写入结构引用。核心记范围与整段账目，其余块记核心位置与「自己那块」的账目（作为核心不在场时的退路）。 */
     private void applyStructureRef(BlockPos corePos, BlockPos origin, StructureStats stats) {
         boolean isCore = worldPosition.equals(corePos);
         boolean wasCore = isCore();
