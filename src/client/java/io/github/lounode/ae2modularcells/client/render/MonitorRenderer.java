@@ -2,7 +2,6 @@ package io.github.lounode.ae2modularcells.client.render;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
@@ -16,6 +15,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 
+import io.github.lounode.ae2modularcells.client.gui.NumberDisplayMode;
 import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 
@@ -88,22 +88,14 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
     }
 
     /**
-     * 压缩单位：监控器上的数字要一眼可读，1.2k / 3.4M 比 1234567 有用。
+     * 数字格式与终端界面同一套：三位有效数字 + k/M/G 后缀（界面里那档「字母计数」的写法）。
      *
-     * <p>k / M / G 走 1000 进制——只做显示，不参与任何计算。</p>
+     * <p>曾经这里自己写了一份「两位小数」的版本（{@code 1.2k}），与界面的 {@code 1.23k} 不一致——
+     * 同一个数字在两处长得不一样，玩家会以为是两个值。现在格式只有一个来源（{@link NumberDisplayMode}），
+     * 改一处两边都跟着变。</p>
      */
     private static String compact(long value) {
-        long abs = Math.abs(value);
-        if (abs < 1000L) {
-            return Long.toString(value);
-        }
-        if (abs < 1000000L) {
-            return String.format(Locale.ROOT, "%.1fk", value / 1000.0);
-        }
-        if (abs < 1000000000L) {
-            return String.format(Locale.ROOT, "%.1fM", value / 1000000.0);
-        }
-        return String.format(Locale.ROOT, "%.1fG", value / 1000000000.0);
+        return NumberDisplayMode.LETTERS.format(value);
     }
 
     /** 一行文字加颜色。 */

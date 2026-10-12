@@ -41,6 +41,7 @@ import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleModelData;
+import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleModelData;
 
 /**
  * 连接状态渲染：照 AE2 合成单元（crafting cube）那套规则画边框与内面。
@@ -188,6 +189,14 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * （紫黑格），那比编译器报错难查得多。</p>
      */
     /**
+     * 这一块是不是成型结构的一部分。模型数据里没有这个键（理论上不会：方块实体总会写）时按未成型处理
+     * ——宁可少画一层成型装饰，也不要在一块没成型孤立模块上画出「已拼好」的边框。
+     */
+    private static boolean isFormed(ModelData extraData) {
+        return Boolean.TRUE.equals(extraData.get(EnergyCellModuleModelData.FORMED));
+    }
+
+    /**
      * 发光强度：按储能档位取，0 档（空）不发光 → 4 档（满）满亮。
      *
      * <p>没有状态时（理论上不会发生：{@code side == null} 早就返回了）按 0 档处理，宁可少画一层也不报错。</p>
@@ -223,10 +232,9 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         // 每次只为当前这一面出几何：六个面各调一次，在这里算别的面是白花的。
         builder.setDrawFaces(EnumSet.of(side));
 
-        // 未成型：四周一个同类模块都没有，这一块还没拼进任何结构。此时画未成型外观（空白单元那套贴图），
-        // 而不是成型后才该出现的连接边框与角。成型至少要 3×3×3，凑不齐的段里每一块都至少有一个邻居，
-        // 所以只有真正孤立的单块会走到这里。
-        if (connections.isEmpty()) {
+        // 未成型：这一块还没拼进任何成型结构（结构检测的结论，不是「有没有邻居」）。此时用未成型纹理
+        // （空白单元那套 unit / unit_base），不画连接边框、角与发光层——那些是成型后才该出现的东西。
+        if (!isFormed(extraData)) {
             builder.setTexture(this.unit);
             builder.setTexture(Direction.UP, this.unitBase);
             builder.setTexture(Direction.DOWN, this.unitBase);

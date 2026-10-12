@@ -750,6 +750,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * 集合比；调用次数与结构变更次数同量级，不值当为此多存一份状态。</p>
      */
     private void afterStructureReferenceChanged(boolean wasCore) {
+        // 模型要重画：成型与否（以及连接位）都在模型数据里，结构一变外观就得跟上。
+        // 不刷新的后果是「拼好了结构，画面仍是未成型那一套」——因为 FILL 档位在空电时不变化，
+        // 拿不到那次方块状态变化顺带把模型数据弄脏。
+        requestModelDataUpdate();
         if (wasCore != isCore()) {
             onGridConnectableSidesChanged();
         }
@@ -1174,7 +1178,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
 
     @Override
     public ModelData getModelData() {
-        return EnergyCellModuleModelData.create(getConnections());
+        return EnergyCellModuleModelData.create(getConnections(), isFormed());
     }
 
     // ---- 存档 ----
