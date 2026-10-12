@@ -40,8 +40,11 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
     /**
      * 字形高度（字体单位）。
      *
-     * <p>字体以**基线**为锚：字形落在基线之下，基线上方是空的。竖直居中若只按 {@code (n-1)*行距/2} 对齐，
-     * 整块文字的视觉重心会偏下约半个字形——两行时尤其明显。补上半个字形高度才是真正的居中。</p>
+     * <p>取值 8 是 vanilla ASCII 字形格高（{@code Font.lineHeight} 是 9，含行间距，不是同一量）。</p>
+     *
+     * <p>{@code drawInBatch} 的 y 是**行框顶**：墨迹从锚点往下占 8 单位。所以 n 行墨迹占据
+     * {@code [y, y + (n-1)*行距 + 8]}，要让它与方块中心同心，y 的偏移是
+     * {@code -(  (n-1)*行距/2 + 字形高/2  )}——**减**半个字形，不是加。</p>
      */
     private static final float GLYPH_HEIGHT = 8.0F;
 
@@ -96,8 +99,8 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
         }
         float textScale = Math.min(TEXT_SCALE, 0.8F / Math.max(1.0F, widest));
         pose.scale(textScale, -textScale, textScale);
-        // 竖直居中：先按行数摆中，再补半个字形（字体以基线为锚，不补就整体偏下半个字形）。
-        pose.translate(0.0, -(lines.size() - 1) * LINE_HEIGHT / 2.0F + GLYPH_HEIGHT / 2.0F, 0.0);
+        // 竖直居中：按行数摆中，再**减去**半个字形（y 是行框顶、墨迹向下 8 单位，不减就整体偏下半个字形）。
+        pose.translate(0.0, -(lines.size() - 1) * LINE_HEIGHT / 2.0F - GLYPH_HEIGHT / 2.0F, 0.0);
         for (Line line : lines) {
             float x = -font.width(line.text()) / 2.0F;
             // 自发光：监控器上的数字不该因为天黑看不见，所以用全亮打包光。

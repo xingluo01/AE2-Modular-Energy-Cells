@@ -67,6 +67,22 @@ public class MonitorBlockEntity extends BlockEntity {
         updateFormedState(corePos != null);
     }
 
+    /**
+     * 读档/区块加载后自愈成型态。
+     *
+     * <p>与模块同一口径（见 {@code EnergyCellModuleBlockEntity.onReady} 里那句 updateFormedState）：
+     * 方块状态与方块实体数据是两处落盘，可能出现「存档里 FORMED 还是 false、而 corePos 已经非空」
+     * （升级前旧存档、结构在监控器区块卸载期间成型）。没有这一步，显示侧的未成型守卫会把这个脏状态
+     * 固化成「这块监控器永远不显示读数」。</p>
+     */
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (this.corePos != null) {
+            updateFormedState(true);
+        }
+    }
+
     public int storagePercent() {
         return this.storagePercent;
     }
