@@ -1,7 +1,20 @@
 {
   "variants": {
-    "": {
-      "model": "ae2modularcells:block/monitor_block"
+    "facing=north": {
+      "model": "ae2modularcells:block/monitor_block",
+      "y": 0
+    },
+    "facing=east": {
+      "model": "ae2modularcells:block/monitor_block",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "ae2modularcells:block/monitor_block",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "ae2modularcells:block/monitor_block",
+      "y": 270
     }
   }
 }

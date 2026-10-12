@@ -7,9 +7,14 @@ import org.jetbrains.annotations.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.item.context.BlockPlaceContext;
+
+import com.mojang.serialization.MapCodec;
 
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 
@@ -26,7 +31,7 @@ import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
  *
  * <p><b>没有 ticker</b>：方块实体类型两处传 null，与模块方块同一条红线。</p>
  */
-public class MonitorBlock extends Block implements EntityBlock, StructurePart {
+public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBlock, StructurePart {
 
     /** 监控器的两种用途。 */
     public enum Kind {
@@ -48,6 +53,26 @@ public class MonitorBlock extends Block implements EntityBlock, StructurePart {
 
     public Kind kind() {
         return this.kind;
+    }
+    /**
+     * 正面朝玩家（原版水平朝向约定），模型用 blockstate 的 4 个 y 旋转变体摆放。
+     *
+     * <p>朝向只决定「读数画在哪一面」：结构检测与能量层面完全不看它。</p>
+     */
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        return this.defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(FACING);
+    }
+
+    /** 方块编解码器：{@code HorizontalDirectionalBlock} 把它声明成抽象方法，这里必须给一个。 */
+    @Override
+    protected MapCodec<? extends HorizontalDirectionalBlock> codec() {
+        return simpleCodec(properties -> new MonitorBlock(this.kind, properties));
     }
 
     public void setBlockEntityType(BlockEntityType<MonitorBlockEntity> type) {

@@ -8,6 +8,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 
@@ -17,6 +18,7 @@ import io.github.lounode.ae2modularcells.AE2ModularCells;
 import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.client.gui.EnergyModuleTerminalScreen;
 import io.github.lounode.ae2modularcells.client.render.ConnectedModuleBakedModel;
+import io.github.lounode.ae2modularcells.client.render.MonitorRenderer;
 import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
 
 /**
@@ -34,6 +36,7 @@ public final class AEModularCellsClient {
     public AEModularCellsClient(IEventBus modBus, ModContainer container) {
         modBus.addListener(this::registerScreens);
         modBus.addListener(this::installConnectedModels);
+        modBus.addListener(this::registerRenderers);
     }
 
     private void registerScreens(RegisterMenuScreensEvent event) {
@@ -47,6 +50,14 @@ public final class AEModularCellsClient {
                         return new EnergyModuleTerminalScreen(menu, inventory, title, style);
                     }
                 });
+    }
+
+    /** 监控器的正面读数渲染器：两类监控器共用一个渲染类，类型不同、外观一致。 */
+    private void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        event.registerBlockEntityRenderer(AEModularCellsRegistries.monitorBlockEntity(AEModularCellsRegistries.ENERGY_MONITOR),
+                MonitorRenderer::new);
+        event.registerBlockEntityRenderer(AEModularCellsRegistries.monitorBlockEntity(AEModularCellsRegistries.FLOW_MONITOR),
+                MonitorRenderer::new);
     }
 
     private void installConnectedModels(ModelEvent.ModifyBakingResult event) {

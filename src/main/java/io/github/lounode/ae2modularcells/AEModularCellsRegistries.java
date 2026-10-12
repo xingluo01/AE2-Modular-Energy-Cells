@@ -142,6 +142,11 @@ public final class AEModularCellsRegistries {
         }
     }
 
+    /** 监控器的方块实体类型。客户端注册渲染器要按类型注册，所以开一个只读取用口。 */
+    public static BlockEntityType<MonitorBlockEntity> monitorBlockEntity(DeferredBlock<MonitorBlock> block) {
+        return MONITOR_BLOCK_ENTITIES.get(block).get();
+    }
+
     /** 监控器的方块属性：与模块同强度，便于统一。 */
     private static BlockBehaviour.Properties monitorProperties() {
         return BlockBehaviour.Properties.of().strength(2.5F, 6.0F).requiresCorrectToolForDrops();
