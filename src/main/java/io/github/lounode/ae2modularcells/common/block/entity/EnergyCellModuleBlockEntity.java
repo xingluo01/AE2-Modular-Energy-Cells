@@ -733,7 +733,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         this.memberCache = null;
         // 池子的上限跟着账目走；能量不搬（它本来就在核心里，而「核心」现在就是自己）。
         setInternalMaxPower((double) single.totalCapacity());
-        afterStructureReferenceChanged(wasCore);
+        // 退化为独立元件：不再是成型结构的一部分。
+        afterStructureReferenceChanged(wasCore, false);
         if (changed) {
             setChanged();
         }
@@ -745,7 +746,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * <p>为什么不在身份真的变了时才调：{@code setExposedOnSides} 是幂等的，而判断「真变了」需要跟上一轮的
      * 集合比；调用次数与结构变更次数同量级，不值当为此多存一份状态。</p>
      */
-    private void afterStructureReferenceChanged(boolean wasCore) {
+    private void afterStructureReferenceChanged(boolean wasCore, boolean formed) {
+        // 成型态是方块状态（照 AE2 合成单元），放在这里保证：只要结构引用变了，外观判定同时到位。
+        updateFormedState(formed);
         // 对外是否提供储能：只有核心提供。每块各交自己的节点之后（见 getGridConnectableSides 上方那段），
         // 若成员也提供储能，网格里就会出现与方块数同规模的存储节点、账目被重复计算。
         setInternalPublicPowerStorage(isCore());
@@ -916,7 +919,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         this.corePos = newCorePos;
         this.structureOrigin = newOrigin;
         this.ownStats = newStats;
-        afterStructureReferenceChanged(wasCore);
+        // 走到这里就是被写进一段成型结构了。
+        afterStructureReferenceChanged(wasCore, true);
         setChanged();
     }
 
@@ -1220,7 +1224,28 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
 
     @Override
     public ModelData getModelData() {
-        return EnergyCellModuleModelData.create(getConnections(), isFormed());
+        // 只带连接位：成型与否已经放到方块状态里（见 EnergyCellModuleBlock.FORMED）。
+        return EnergyCellModuleModelData.create(getConnections());
+    }
+
+    /**
+     * 把「是否成型」写进方块状态。
+     *
+     * <p>照 AE2 合成单元：{@code CraftingBlockEntity#updateSubType} 用
+     * {@code level.setBlock(pos, newState, Block.UPDATE_CLIENTS)} 切成型态（不带邻居更新是故意的——代上邻居更新会死循环）。
+     * 客户端因此不靠自定义包就能拿到成型态，模型选择/绘制随之切换。</p>
+     */
+    private void updateFormedState(boolean formed) {
+        var level = this.level;
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        var state = getBlockState();
+        if (state.hasProperty(EnergyCellModuleBlock.FORMED)
+                && state.getValue(EnergyCellModuleBlock.FORMED) != formed) {
+            level.setBlock(worldPosition, state.setValue(EnergyCellModuleBlock.FORMED, formed),
+                    net.minecraft.world.level.block.Block.UPDATE_CLIENTS);
+        }
     }
 
     // ---- 存档 ----

@@ -18,6 +18,7 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.phys.BlockHitResult;
 
@@ -51,9 +52,21 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
      */
     public static final IntegerProperty FILL = IntegerProperty.create("fill", 0, 4);
 
+    /**
+     * 成型与否。
+     *
+     * <p><b>放方块状态而不是方块实体数据</b>：这是照 AE2 合成单元的口径（{@code AbstractCraftingUnitBlock.FORMED}，
+     * 以及 {@code crafting_unit.json} 的 {@code formed=false → crafting/unit}、{@code formed=true → crafting/unit_formed}）。
+     * 方块状态变化是一等公民、必然同步；而模型数据在客户端是按位置缓存的，靠自定义包推容易漏一环——漏了就出现
+     * 「结构成型了，方块还是未成型纹理」。</p>
+     *
+     * <p>纯视觉属性：不参与结构检测，也不参与能量账目（检测仍以世界里的实际方块为准）。</p>
+     */
+    public static final BooleanProperty FORMED = BooleanProperty.create("formed");
+
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(FILL);
+        builder.add(FILL, FORMED);
     }
 
     private final EnergyCellTier tier;

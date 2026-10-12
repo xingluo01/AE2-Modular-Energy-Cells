@@ -1,18 +1,33 @@
 {
   "variants": {
-    "fill=0": {
+    "fill=0,formed=false": {
       "model": "ae2modularcells:block/basic_energy_cell_module"
     },
-    "fill=1": {
+    "fill=1,formed=false": {
       "model": "ae2modularcells:block/basic_energy_cell_module"
     },
-    "fill=2": {
+    "fill=2,formed=false": {
       "model": "ae2modularcells:block/basic_energy_cell_module"
     },
-    "fill=3": {
+    "fill=3,formed=false": {
       "model": "ae2modularcells:block/basic_energy_cell_module"
     },
-    "fill=4": {
+    "fill=4,formed=false": {
+      "model": "ae2modularcells:block/basic_energy_cell_module"
+    },
+    "fill=0,formed=true": {
+      "model": "ae2modularcells:block/basic_energy_cell_module"
+    },
+    "fill=1,formed=true": {
+      "model": "ae2modularcells:block/basic_energy_cell_module"
+    },
+    "fill=2,formed=true": {
+      "model": "ae2modularcells:block/basic_energy_cell_module"
+    },
+    "fill=3,formed=true": {
+      "model": "ae2modularcells:block/basic_energy_cell_module"
+    },
+    "fill=4,formed=true": {
       "model": "ae2modularcells:block/basic_energy_cell_module"
     }
   }

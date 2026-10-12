@@ -186,14 +186,6 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * （紫黑格），那比编译器报错难查得多。</p>
      */
     /**
-     * 这一块是不是成型结构的一部分。模型数据里没有这个键（理论上不会：方块实体总会写）时按未成型处理
-     * ——宁可少画一层成型装饰，也不要在一块没成型孤立模块上画出「已拼好」的边框。
-     */
-    private static boolean isFormed(ModelData extraData) {
-        return Boolean.TRUE.equals(extraData.get(EnergyCellModuleModelData.FORMED));
-    }
-
-    /**
      * 发光强度：按储能档位取，0 档（空）不发光 → 4 档（满）满亮。
      *
      * <p>没有状态时（理论上不会发生：{@code side == null} 早就返回了）按 0 档处理，宁可少画一层也不报错。</p>
@@ -229,9 +221,10 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         // 每次只为当前这一面出几何：六个面各调一次，在这里算别的面是白花的。
         builder.setDrawFaces(EnumSet.of(side));
 
-        // 未成型：这一块还没拼进任何成型结构（结构检测的结论，不是「有没有邻居」）。此时用未成型纹理
-        // —— 模块化空白能量单元那张 unit，六面全用它，不画连接边框、角与覆盖层。
-        if (!isFormed(extraData)) {
+        // 未成型：读**方块状态**里的 formed（照 AE2 合成单元：crafting_unit.json 的 formed=false/true 指向两套模型）。
+        // 以前这个判定读模型数据，而模型数据在客户端按位置缓存、靠自定义包推—— 漏一环就出现「结构成型了、
+        // 方块还是未成型纹理」。方块状态不会有这个问题。
+        if (state == null || !state.getValue(EnergyCellModuleBlock.FORMED)) {
             builder.setTexture(this.unit);
             builder.addCube(0, 0, 0, OUTER, OUTER, OUTER);
             return quads;
