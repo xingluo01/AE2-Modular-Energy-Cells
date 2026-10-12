@@ -160,6 +160,10 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     private final Map<SlotSemantic, Boolean> appliedHidden = new HashMap<>();
 
     /** 行表是否已到手。首帧可能先渲染、后收到同步包；那时不能动槽位（见 applySlotVisibility）。 */
+    private boolean layoutReadyApplied;
+
+    /** 行表就绪后是否已补过一次槽位可见性重算（只补一次，之后走每帧的增量路径）。 */
+    private boolean visibilityReapplied;
     private boolean layoutReady;
 
     public EnergyModuleTerminalScreen(EnergyModuleTerminalMenu menu, Inventory playerInventory, Component title,
@@ -564,6 +568,14 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
             Arrays.fill(this.bandCounts, 0);
             return;
         }
+        if (!this.layoutReadyApplied) {
+            // 行表刚到手这一帧必须强制重算一次槽位可见性：init() 里那次调用的结果是「布局未就绪」的早退，
+            // 不补这一次就得等下一次开屏（或窗口尺寸变化触发的 init()）才刷新——表现出来的正是
+            // 「画面更新后才显示/重绘全部槽位」。
+            this.layoutReadyApplied = true;
+            this.appliedHidden.clear();
+            // 先把本帧的解析做完再重算（重算要读行标记），所以这里只置标记、末尾统一调用。
+        }
         this.layoutReady = true;
         var marks = layout.split(",", -1);
         for (int band = 0; band < MAX_ROWS; band++) {
@@ -586,6 +598,12 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
                 this.bandMarks[band] = EMPTY_MARK;
             }
         }
+        if (this.layoutReadyApplied && !this.visibilityReapplied) {
+            // 行表就绪后的第一次重算：把首帧早退时漏掉的隐藏/摆放补上（表尾位移也在 applySlotVisibility 里）。
+            this.visibilityReapplied = true;
+            applySlotVisibility();
+        }
+
     }
 
     /** 标题标记里那一段模块数；解析不出来给 0（界面少一个数字，不崩）。 */
