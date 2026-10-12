@@ -648,14 +648,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         var result = MultiblockScanner.scan(level, worldPosition);
         switch (result.status()) {
             case FORMED -> {
-                // 核心必须是**储能模块**（立方体最小角那块）：监控器不存能量、也没有账目，让它当核心会让整段
-                // 没有能量池、终端也打不开。口径：最小角不是模块的立方体不算成型——玩家把监控器摆在最低角时，
-                // 这一段退化为各自的单块（挪开监控器后再触发一次结构变更即恢复）。
-                if (level.getBlockEntity(result.layout().origin()) instanceof EnergyCellModuleBlockEntity) {
-                    applyStructure(result.layout());
-                } else {
-                    clearStructure();
-                }
+                // 不再要求「最小角那块是储能模块」：核心由 applyStructure 在成员里挑（监控器不持有账目，不能当核心，
+                // 但它在结构里的任何位置都是合法的）。整段只有监控器、一块模块都没有时，那边会自己退回去。
+                applyStructure(result.layout());
             }
             case NOT_FORMED -> clearStructure();
             case INDETERMINATE -> {
@@ -784,6 +779,17 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         long inputCap = 0L;
         // 混等级：每块按自己那一档算 D、D_v 与自己的两个上限，整段就是逐块求和（上限也是提供量之和，
         // 不是「某一档的固定值」）。整段的「代表等级」取出现过的最高档，只用于界面文案。
+        // 核心取「布局顺序里的第一块储能模块」，不再固定成最小角那一块。
+        //
+        // 原口径要求最小角必须是模块（否则整段不成型），那是为了让核心一定有账目；但它把「监控器摆在最低角」
+        // 这种完全合法的拼法判死了。现在改为在成员里挑一块模块当核心，同时保证账目一定挂在储能模块上：
+        // 一块模块都没有（整段都是监控器）时，没有能量池可挂，这一段不算成型。
+        var corePos = firstModuleIn(layout);
+        if (corePos == null) {
+            clearStructure();
+            return;
+        }
+
         var capTier = tier;
         int tierMask = 0;
         for (int index = 0; index < count; index++) {
@@ -832,7 +838,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module) {
                 double before = module.localStoredEnergy();
                 boolean core = module.worldPosition.equals(layout.origin());
-                module.applyStructureRef(layout.origin(), stats);
+                module.applyStructureRef(corePos, layout.origin(), stats);
                 if (core) {
                     // 核心自己那份已经在 before 里了，只补新进场的量；夹到整段容量上限内。
                     module.setInternalCurrentPower(Math.min(before + carried, (double) capacity));
@@ -842,7 +848,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             } else if (level.getBlockEntity(cursor) instanceof MonitorBlockEntity monitor) {
                 // 监控器也是结构成员（参与成型与几何），但不储能、不分担账目，只需要知道「我的核心在哪」
                 // 以便正面读到整段的储能与流量。
-                monitor.setCorePos(layout.origin());
+                monitor.setCorePos(corePos);
             }
         }
     }
@@ -853,10 +859,33 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /** 写入结构引用。核心记范围与整段账目，其余块记核心位置与「自己那块」的账目（作为核心不在场时的退路）。 */
-    private void applyStructureRef(BlockPos origin, StructureStats stats) {
-        boolean isCore = worldPosition.equals(origin);
+    /**
+     * 布局里第一块储能模块的位置（确定性：按 {@code modulePos} 的顺序，第一块中选的永远相同）。
+     *
+     * <p>核心只能落在储能模块上——监控器不存能量、也没有账目，让它当核心会让整段没有能量池、终端也打不开。
+     * 但核心**不必**是最小角那一块，所以这里要在成员里找。</p>
+     */
+    @Nullable
+    private BlockPos firstModuleIn(MultiblockScanner.Layout layout) {
+        var level = this.level;
+        if (level == null) {
+            return null;
+        }
+        var cursor = new BlockPos.MutableBlockPos();
+        int count = layout.moduleCount();
+        for (int index = 0; index < count; index++) {
+            layout.modulePos(index, cursor);
+            if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity) {
+                return cursor.immutable();
+            }
+        }
+        return null;
+    }
+
+    private void applyStructureRef(BlockPos corePos, BlockPos origin, StructureStats stats) {
+        boolean isCore = worldPosition.equals(corePos);
         boolean wasCore = isCore();
-        BlockPos newCorePos = isCore ? null : origin;
+        BlockPos newCorePos = isCore ? null : corePos;
         BlockPos newOrigin = isCore ? origin : null;
         var newStats = isCore ? stats : StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
 

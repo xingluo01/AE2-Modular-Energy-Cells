@@ -5,6 +5,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
@@ -16,6 +20,7 @@ import net.minecraft.world.item.context.BlockPlaceContext;
 
 import com.mojang.serialization.MapCodec;
 
+import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 
 /**
@@ -49,6 +54,51 @@ public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBl
     public MonitorBlock(Kind kind, Properties properties) {
         super(properties);
         this.kind = kind;
+    }
+
+    /**
+     * 放置：让四周的模块重扫一遍结构。
+     *
+     * <p>监控器自己不持有账目（没有能重算结构的方块实体），所以不能像模块方块那样「从自己出发检测」
+     * （{@code rebuildAt} 只认模块方块实体）。它只负责把事件播出去——否则「最后一块放的监控器」永远不会触发
+     * 重扫，一整段就停在不成型。</p>
+     */
+    @Override
+    public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
+        super.onPlace(state, level, pos, oldState, movedByPiston);
+        if (level.isClientSide() || oldState.is(state.getBlock())) {
+            return;
+        }
+        // 与模块方块同一套：延后一格再扫，这时方块实体已经建好。
+        level.scheduleTick(pos, this, 1);
+    }
+
+    /** 延后一格的重扫：见 {@link #onPlace}。 */
+    @Override
+    public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+        pokeNeighbours(level, pos);
+    }
+
+    /**
+     * 破坏：结构少了一块，让四周的模块重扫。
+     *
+     * <p>与模块方块被拆同一条路径：邻块的检测会失败，于是整段自动回到独立元件（{@code clearStructure} 会清整段，
+     * 不只是清自己）。</p>
+     */
+    @Override
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+        if (!level.isClientSide() && !newState.is(state.getBlock())) {
+            pokeNeighbours(level, pos);
+        }
+        super.onRemove(state, level, pos, newState, isMoving);
+    }
+
+    /** 把「这里变了」告诉四周的模块——重算入口只在模块方块实体上。 */
+    private static void pokeNeighbours(Level level, BlockPos pos) {
+        var cursor = new BlockPos.MutableBlockPos();
+        for (var direction : Direction.values()) {
+            EnergyCellModuleBlockEntity.rebuildAt(level, cursor.setWithOffset(pos, direction));
+        }
     }
 
     public Kind kind() {
