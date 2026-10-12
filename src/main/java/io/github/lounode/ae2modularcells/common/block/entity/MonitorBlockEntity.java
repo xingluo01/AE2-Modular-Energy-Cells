@@ -1,33 +1,53 @@
 package io.github.lounode.ae2modularcells.common.block.entity;
 
-import org.jetbrains.annotations.Nullable;
+import java.util.Objects;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
-import java.util.Objects;
-
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
+import org.jetbrains.annotations.Nullable;
+
+import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
+
 /**
- * 监控器方块实体：只记「我在哪一段结构里」，自身不存能量、不算账。
+ * 监控器方块实体：只保存「显示用」的那几个数，以及它所属结构的核心坐标。
  *
- * <p>两种监控器（能量 / 能量流量）共用这一个类，读出什么由方块的 {@code MonitorKind} 决定——与三档模块
- * 共用方块实体类同一套做法。</p>
+ * <p><b>读数由核心推送</b>（口径已定）：核心在它的网格 tick 里算出整段的储能百分比与输入流量，再写到本段的
+ * 监控器上。所以监控器这边<b>没有 ticker、也没有自己的网格节点</b>——整段结构依旧只有一个节点。</p>
  *
- * <p><b>不注册 ticker</b>：读数由客户端每帧向核心现取（正面那几行数字），不需要服务端每 tick 推。等结构成员
- * 接线（下一轮）把 {@link #corePos} 填上之后，这里也只多一个「核心在哪」的引用。</p>
+ * <p><b>为什么用 NBT 同步而不是自定义网络包</b>：读数本来就该跟着方块实体一起同步（区块重载、玩家走远再回来都
+ * 要能立刻画出上一次的值），而 {@code getUpdateTag} + {@code sendBlockUpdated} 就是原版给这条路造的车。</p>
+ *
+ * <p><b>只在显示值真的变了才推</b>：{@link #applyReadout} 先做一次粗粒度比较（百分比取整到 1%、流量取整到
+ * 64 AE/t），不变就直接返回。否则核心每 tick 都推一次，1 秒 20 个包只为了把小数点后几位改掉。</p>
  */
 public class MonitorBlockEntity extends BlockEntity {
 
-    /** 所属结构的核心；未成型、或还没接线时为 null。 */
+    /** 推送的粒度：百分比按 1%、流量按 64 AE/t。低于这个幅度的变化不推包。 */
+    private static final int PERCENT_STEP = 1;
+    private static final long RATE_STEP = 64L;
+
+    /** 我所属结构的核心位置；未成型时为 null。 */
     @Nullable
     private BlockPos corePos;
 
-    public MonitorBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
+    /** 储能百分比（0~100，取整）；流量监控器用不到，留着是为了两类监控器共用一套同步。 */
+    private int storagePercent;
+    /** 输入流量（AE/t，实测）。 */
+    private long inputRate;
+    /** 吞吐量（AE/t，1 秒均值）。 */
+    private long throughput;
+
+    public MonitorBlockEntity(net.minecraft.world.level.block.entity.BlockEntityType<?> type, BlockPos pos,
+            BlockState state) {
         super(type, pos, state);
+    }
+
+    public boolean isFlowMonitor() {
+        return this.getBlockState().getBlock() instanceof MonitorBlock monitor && monitor.kind() == MonitorBlock.Kind.FLOW;
     }
 
     @Nullable
@@ -35,6 +55,7 @@ public class MonitorBlockEntity extends BlockEntity {
         return this.corePos;
     }
 
+    /** 结构重算时由核心写入（见 {@code EnergyCellModuleBlockEntity#applyStructure}）。 */
     public void setCorePos(@Nullable BlockPos corePos) {
         if (Objects.equals(this.corePos, corePos)) {
             return;
@@ -43,17 +64,66 @@ public class MonitorBlockEntity extends BlockEntity {
         setChanged();
     }
 
+    public int storagePercent() {
+        return this.storagePercent;
+    }
+
+    public long inputRate() {
+        return this.inputRate;
+    }
+
+    public long throughput() {
+        return this.throughput;
+    }
+
+    /**
+     * 核心推送读数。返回是否真的更新过（调用方据此决定要不要发包，一般直接用返回值）。
+     *
+     * @param storagePercent 整段储能百分比（0~100）
+     * @param inputRate      本 tick 收进的 AE（实测输入流量）
+     * @param throughput     近 1 秒平均吞吐（AE/t）
+     */
+    public boolean applyReadout(int storagePercent, long inputRate, long throughput) {
+        if (sameDisplay(storagePercent, inputRate, throughput)) {
+            return false;
+        }
+        this.storagePercent = storagePercent;
+        this.inputRate = inputRate;
+        this.throughput = throughput;
+        setChanged();
+        return true;
+    }
+
+    /** 粗粒度比较：只有「屏幕上看得出变化」才算变了。 */
+    private boolean sameDisplay(int storagePercent, long inputRate, long throughput) {
+        return Math.abs(this.storagePercent - storagePercent) < PERCENT_STEP
+                && Math.abs(this.inputRate - inputRate) < RATE_STEP
+                && Math.abs(this.throughput - throughput) < RATE_STEP;
+    }
+
     @Override
     public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.saveAdditional(data, registries);
         if (this.corePos != null) {
             data.putLong("core", this.corePos.asLong());
         }
+        data.putInt("percent", this.storagePercent);
+        data.putLong("input", this.inputRate);
+        data.putLong("throughput", this.throughput);
     }
 
     @Override
     public void loadAdditional(CompoundTag data, HolderLookup.Provider registries) {
         super.loadAdditional(data, registries);
         this.corePos = data.contains("core") ? BlockPos.of(data.getLong("core")) : null;
+        this.storagePercent = data.getInt("percent");
+        this.inputRate = data.getLong("input");
+        this.throughput = data.getLong("throughput");
+    }
+
+    /** 客户端同步走 NBT：读档与「核心推了新读数」用的是同一份写入代码。 */
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        return saveWithoutMetadata(registries);
     }
 }
