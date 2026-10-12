@@ -35,6 +35,7 @@ import io.github.lounode.ae2modularcells.common.ModularCellConstants;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.StructurePart;
+import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 import io.github.lounode.ae2modularcells.common.StorageComponentTier;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
@@ -121,6 +122,18 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
 
     /** 显示用的峰值：窗口内每 tick 收得最多的一次；配 {@link #lastInputTick} 做线性衰减。 */
     private long inputRatePeak;
+
+    /**
+     * 近 1 秒窗口内收进的 AE 合计，以及窗口起点（游戏刻）。
+     *
+     * <p>用途与 {@link #inputRatePeak} 不同：那是「本 tick 峰值 + 线性衰减」，给输入进度条做
+     * 「没人供电就自己降下去」的效果；这里是**真均值**（窗口内累计 ÷ 窗口跨过的 tick 数），
+     * 给界面读数与监控器用——持续供能时是稳的，停供后一个窗口内落到 0。</p>
+     */
+    private long inputWindowSum;
+
+    /** 窗口起点（游戏刻）。每结算一次就挪到当前刻。 */
+    private long inputWindowStartTick;
 
     /**
      * 显示窗口与额度重置的时长（tick）。
@@ -273,6 +286,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             return;
         }
         long now = this.level.getGameTime();
+        this.inputWindowSum += amount;
         // 额度计数：严格按 tick 累加。
         if (now == this.inputSpentTick) {
             this.inputSpentThisTick += amount;
@@ -295,6 +309,24 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * <p>不是速率上限，是**实测值**：显示口径是「窗口内峰值 + 线性衰减」——持续供能时保持满值，
      * 停供后 0.5 秒内线性回落（这正是界面上那条输入进度条要的效果：没人供电时它自己降下去）。</p>
      */
+    /**
+     * 近 1 秒输入均值（AE/t）。
+     *
+     * <p>这是界面读数与监控器共用的口径：窗口内累计 ÷ 窗口实际跨过的 tick 数——停供后一个窗口内自然落到 0，
+     * 不像 {@link #inputRate()} 那样按「本 tick 峰值 + 线性衰减」走（那是进度条的观感口径）。</p>
+     */
+    public long averageInputRate() {
+        var core = resolveCore();
+        if (core != null && core != this) {
+            return core.averageInputRate();
+        }
+        if (this.level == null) {
+            return 0L;
+        }
+        long span = Math.max(1L, this.level.getGameTime() - this.inputWindowStartTick);
+        return Math.round((double) this.inputWindowSum / span);
+    }
+
     public long inputRate() {
         var core = resolveCore();
         if (core != null && core != this) {
@@ -665,11 +697,40 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         }
         var layout = new MultiblockScanner.Layout(this.structureOrigin, this.ownStats.side());
         var cursor = new BlockPos.MutableBlockPos();
+        // 监控器的档位与读数也在这一个循环里推：它们的槽位同样在 multiblock 布局里（见 applyStructureRefs）。
+        long now = level.getGameTime();
+        int percent = Math.round(lightRatio() * 100F);
+        long average = Math.round((double) this.inputWindowSum
+                / Math.max(1L, now - this.inputWindowStartTick));
         int count = layout.moduleCount();
         for (int index = 0; index < count; index++) {
             layout.modulePos(index, cursor);
             applyFill(level, cursor, fill);
+            applyMonitorReadout(level, cursor, fill, percent, average);
         }
+        // 窗口结算：这一秒的账收进 averageInputRate() 的下一个窗口。
+        this.inputWindowStartTick = now;
+        this.inputWindowSum = 0L;
+    }
+
+    /**
+     * 监控器的档位方块状态与读数。
+     *
+     * <p>监控器与储能模块共用一套结构枚举，但属性是各自的（{@code MonitorBlock.FILL} 不是
+     * {@code EnergyCellModuleBlock.FILL}），所以这里单独写一次。读数走
+     * {@link MonitorBlockEntity#applyReadout}——此前这个方法没有任何调用点，监控器上一直是空的。</p>
+     */
+    private void applyMonitorReadout(Level level, BlockPos pos, int fill, int percent, long average) {
+        if (!level.isLoaded(pos) || !(level.getBlockEntity(pos) instanceof MonitorBlockEntity monitor)) {
+            return;
+        }
+        var state = level.getBlockState(pos);
+        if (state.hasProperty(MonitorBlock.FILL) && state.getValue(MonitorBlock.FILL) != fill) {
+            level.setBlock(pos, state.setValue(MonitorBlock.FILL, fill),
+                    net.minecraft.world.level.block.Block.UPDATE_CLIENTS);
+        }
+        // 监控器上「输入速率」那一格显示的就是近 1 秒均值，与界面同源。
+        monitor.applyReadout(percent, average, average);
     }
 
     /** 比例 → 档位：0% 不发光，其余四舍五入到最近的档。 */

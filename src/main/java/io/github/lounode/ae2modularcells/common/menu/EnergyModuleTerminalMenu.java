@@ -351,7 +351,8 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         this.totalInputRate = stats.totalInputRate();
         // 两个「当前值」是实测的：储能取整段池子里的数，输入速率取本 tick 收进来的量（没人供电时就是 0）。
         this.currentEnergy = this.host.storedEnergy();
-        this.currentInputRate = this.host.inputRate();
+        // 与监控器同源：近 1 秒均值（不是本 tick 峰值 + 线性衰减的那个口径）。
+        this.currentInputRate = this.host.averageInputRate();
 
         var rows = this.host.rows();
         this.totalRows = Math.max(1, rows.size());
