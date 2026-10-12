@@ -152,6 +152,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // 把自己登记成网格的可 tick 服务：AE2 只会 tick 登记过的节点服务，不是实现了接口就算数。
         // 用它的原因：本模组不给方块实体注册 ticker（红线），周期工作走网格这一条路。
         getMainNode().addService(IGridTickable.class, this);
+        // 多块聚合：照 AE2 合成单元（CraftingBlockEntity 构造里 setFlags(MULTIBLOCK, REQUIRE_CHANNEL)
+        // + addService(IGridMultiblock.class, this::getMultiblockNodes)）。
+        // 网格据此把整段视为「一个多块设备」：整段合成一体，而不是 N 个互不相干的节点。
+        // 注意两侧口径的差别是有意的：合成单元只在成型时可连接，而本模组单块独立时也是一台完整的储能元件，
+        // 所以 getGridConnectableSides 仍恒开六面（见该方法上方注释）。
+        getMainNode().setFlags(appeng.api.networking.GridFlags.MULTIBLOCK,
+                appeng.api.networking.GridFlags.REQUIRE_CHANNEL)
+                .addService(appeng.api.networking.IGridMultiblock.class, (appeng.api.networking.IGridMultiblock) this::getMultiblockNodes);
         this.tier = requireTier(state);
         // host 不能省：AppEngInternalInventory 只有在有 host 时才会调 saveChangedInventory，
         // 而「方块实体被打上脏标记」就是这么来的。不传 host 时，组件槽里的改动会不会被存档取决于
@@ -1220,6 +1228,34 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     public boolean isCoreChunkLoaded() {
         return this.corePos == null || (this.level != null && this.level.isLoaded(this.corePos));
+    }
+
+    /**
+     * 多块聚合的兄弟节点：整段结构里除自己以外的成员节点。
+     *
+     * <p>网格用它把 N 块当作一个多块设备（通道、寻路、设备列表只算一次）。监控器没有节点，天然跳过；
+     * 未成型或核心区块未加载时返回空——那时它只是自己一块。</p>
+     */
+    private java.util.Iterator<appeng.api.networking.IGridNode> getMultiblockNodes() {
+        var level = this.level;
+        var core = resolveCore();
+        if (level == null || core == null || core.structureOrigin == null || core.ownStats.side() <= 1) {
+            return java.util.List.<appeng.api.networking.IGridNode>of().iterator();
+        }
+        var layout = new MultiblockScanner.Layout(core.structureOrigin, core.ownStats.side());
+        var nodes = new java.util.ArrayList<appeng.api.networking.IGridNode>();
+        var cursor = new BlockPos.MutableBlockPos();
+        int count = layout.moduleCount();
+        for (int index = 0; index < count; index++) {
+            layout.modulePos(index, cursor);
+            if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity member && member != this) {
+                var node = member.getMainNode().getNode();
+                if (node != null) {
+                    nodes.add(node);
+                }
+            }
+        }
+        return nodes.iterator();
     }
 
     @Override
