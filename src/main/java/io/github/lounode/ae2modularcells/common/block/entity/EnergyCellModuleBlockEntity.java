@@ -507,6 +507,36 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         return core != null && core.structureOrigin != null && core.ownStats.side() > 1;
     }
 
+    // ---- 渲染：自发光层（供客户端每帧调用）----
+
+    /**
+     * 发光强度：整段储能占整段容量的比例（0~1）。
+     *
+     * <p>给模块方块的自发光层用（口径：按储能百分比线性，0% 不发光 → 100% 满亮）。读的是<b>已同步的值</b>：
+     * 核心的储能由 AE2 的动力方块实体走 NBT 同步，容量取自核心手里的结构账目；两项任何一项拿不到（核心不在、
+     * 区块未加载、结构未成型）就返回 0——渲染路径宁可少画一层，不能因为缺数把玩家卡死。</p>
+     */
+    public float lightRatio() {
+        var core = resolveCore();
+        if (core == null) {
+            return 0.0F;
+        }
+        long capacity = core.ownStats.totalCapacity();
+        if (capacity <= 0L) {
+            return 0.0F;
+        }
+        double ratio = core.storedEnergy() / (double) capacity;
+        return (float) Math.max(0.0, Math.min(1.0, ratio));
+    }
+
+    /**
+     * 某一面是否贴着同类结构件。发光层只画<b>露在外面</b>的面：贴着邻块的那一面在立方体内部，画了也看不见，
+     * 白白多六倍顶点。
+     */
+    public boolean faceConnected(Direction direction) {
+        return getConnections().contains(direction);
+    }
+
     // ---- 结构生命周期 ----
 
     /**
