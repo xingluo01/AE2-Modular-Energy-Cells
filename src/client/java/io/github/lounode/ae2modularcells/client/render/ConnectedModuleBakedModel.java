@@ -39,6 +39,7 @@ import appeng.client.render.cablebus.CubeBuilder;
 import io.github.lounode.ae2modularcells.AE2ModularCells;
 import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleModelData;
 
 /**
@@ -159,6 +160,18 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * {@code models/block/*.json} 的 {@code textures} 段声明入图集。声明漏了不会报错，只会拿到 missingno
      * （紫黑格），那比编译器报错难查得多。</p>
      */
+    /**
+     * 发光强度：按储能档位取，0 档（空）不发光 → 4 档（满）满亮。
+     *
+     * <p>没有状态时（理论上不会发生：{@code side == null} 早就返回了）按 0 档处理，宁可少画一层也不报错。</p>
+     */
+    private static float fillIntensity(@Nullable BlockState state) {
+        if (state == null) {
+            return 0.0F;
+        }
+        return state.getOptionalValue(EnergyCellModuleBlock.FILL).orElse(0) / 4.0F;
+    }
+
     private static TextureAtlasSprite sprite(ModelEvent.ModifyBakingResult event, String textureName) {
         var texture = ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "block/" + textureName);
         var sprite = event.getTextureGetter().apply(new Material(TextureAtlas.LOCATION_BLOCKS, texture));
@@ -216,11 +229,19 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         // 发光层画在基础面**之后**：两面共面，后画的在上。这里必须靠后，因为基础面贴图是全不透明的
         // （已解出：三档 `*_energy_cell.png` 无 tRNS），先画就什么也看不到；而光贴图大半透明，
         // 叠上去正好只在它的线网格处发光。AE2 控制器那两个模型反过来（光层在前），是因为它的基础贴图带透明窗。
-        builder.setTexture(this.light);
-        builder.setEmissiveMaterial(true);
-        builder.addCube(x1, y1, z1, x2, y2, z2);
-        // 这个 builder 是复用的：不清掉自发光标记，后面画的普通面也会变成满地发光。
-        builder.setEmissiveMaterial(false);
+        //
+        // 强度按储能档位（EnergyCellModuleBlock#FILL）取：setEmissiveMaterial 让这层不吃世界光照，
+        // setColorRGB 再按档位乘一个系数——两者都是 AE2 自己的 CubeBuilder 提供的公开做法。
+        float intensity = fillIntensity(state);
+        if (intensity > 0.0F) {
+            builder.setTexture(this.light);
+            builder.setEmissiveMaterial(true);
+            builder.setColorRGB(intensity, intensity, intensity);
+            builder.addCube(x1, y1, z1, x2, y2, z2);
+            // 这个 builder 是复用的：颜色与自发光标记都要归位，否则后面画的普通面也会被染色/满地发光。
+            builder.setColorRGB(1.0F, 1.0F, 1.0F);
+            builder.setEmissiveMaterial(false);
+        }
 
         return quads;
     }

@@ -182,6 +182,7 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
   - **注意**：`lightRatio()` 是逐帧可变的，但 baked model 是烘焙期静态的——这正是要分档的原因；别试图在模型里读实时百分比。
 - **不做**：不改 AE2 原版能源元件的行为；不把能量存进每个方块（单一能量池是设计前提）；不在检测里上 tick 轮询。
 - 🔑 **公共前置（已取证，下一步直接用）**：核心的周期钩子 `IGridTickable`（AE2 19.2.18 签名）：
+- ⬜ **分档服务端未接**：`EnergyCellModuleBlock.FILL`（0~4）与 5 个 blockstate 变体、模型侧 `fillIntensity()` + `setColorRGB` 已就位；缺的是**跨档更新**——核心实现 `IGridTickable`（签名已取证）并在 tick 里按 `lightRatio()` 算档位、给结构成员改方块状态。注册服务用 `getMainNode().addService(IGridTickable.class, this)`（`IManagedGridNode#addService(Class,T)` 已 javap 证实）。注意：动手前先确认本项目 `getMainNode()` 的确切返回类型（现有调用是 `getMainNode().ifPresent(...)`，见 `EnergyCellModuleBlockEntity:373`）。当前未接 → 模块恒为 0 档、不发光（与「0% 不发光」口径一致，但实机看不到光）。
   `TickingRequest getTickingRequest(IGridNode)`、`TickRateModulation tickingRequest(IGridNode, int ticksSinceLast)`；
   `TickingRequest(int minTickRate, int maxTickRate, boolean isSleeping)`（另有 `TickingRequest(TickRates, boolean)` 重载）。
   同一钩子同时是两件事的前置：① 监控器读数推送（核心 tick 里算百分比/流量 → `MonitorBlockEntity#applyReadout` → 变了发包）；② 自发光分档（跨档时更新结构成员的方块状态）。

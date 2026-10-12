@@ -15,7 +15,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.phys.BlockHitResult;
 
 import appeng.block.AEBaseEntityBlock;
@@ -37,6 +40,21 @@ import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
  * 与时间有关的东西。</p>
  */
 public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlockEntity> implements StructurePart {
+
+    /**
+     * 储能档位（0~4）：只影响画面——发光层的强度按档位取（0 档不发光 → 4 档满亮），不参与任何能量计算。
+     *
+     * <p><b>为什么是分档而不是直接读百分比</b>：模型是烘焙期静态的，拿不到逐帧能量；分档让“电量越多越亮”
+     * 以 5 级跳变的形式成立，跨档时由服务端改这个属性（一项方块状态变化，比逐帧发数据便宜得多）。</p>
+     *
+     * <p>默认 0 档：未成型/空电的模块不发光，与“0% 不发光”的口径一致。</p>
+     */
+    public static final IntegerProperty FILL = IntegerProperty.create("fill", 0, 4);
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(FILL);
+    }
 
     private final EnergyCellTier tier;
 

@@ -1,6 +1,18 @@
 {
   "variants": {
-    "": {
+    "fill=0": {
+      "model": "ae2modularcells:block/dense_energy_cell_module"
+    },
+    "fill=1": {
+      "model": "ae2modularcells:block/dense_energy_cell_module"
+    },
+    "fill=2": {
+      "model": "ae2modularcells:block/dense_energy_cell_module"
+    },
+    "fill=3": {
+      "model": "ae2modularcells:block/dense_energy_cell_module"
+    },
+    "fill=4": {
       "model": "ae2modularcells:block/dense_energy_cell_module"
     }
   }
