@@ -135,8 +135,6 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      *
      * <p>名字即协议：屏幕靠它决定每条带贴哪一张图、要不要写标题。状态跟着行表走，不改名字、不复用。</p>
      */
-    @GuiSync(70)
-
     /** 整段出现过哪几档模块（位掩码）；多于一位就是混拼，顶栏据此换文案。 */
     @GuiSync(71)
     public int tierMask;
