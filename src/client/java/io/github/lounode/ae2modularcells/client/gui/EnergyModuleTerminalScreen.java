@@ -158,6 +158,9 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     /** 上一次用过的结构快照；变了才重排。 */
     private String lastSnapshot = "";
 
+    /** 快照未到时的过渡态：这一帧按「全是模块带」铺满，不隐藏任何带（见 refreshLocalRows）。 */
+    private boolean snapshotPending;
+
     /** 上一次同步给服务端的本地行数；变了才要一次内容重同步（见 updateBeforeRender）。 */
     private int syncedRows = -1;
 
@@ -608,6 +611,18 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
                 TerminalRows.build(tiers.length, index -> tiers[index], this.localRows);
             }
             this.appliedHidden.clear();
+        }
+        // 快照还没到（且结构非空）：这一帧**不隐藏任何带**——服务端已经按它自己的行表往窗口里填了内容，
+        // 本地若按「每行 3 个模块」少算了几条带、把尾部带判成空带隐藏，就会出现「看不见但能写入」的组件格。
+        // 铺满模块带只是过渡态，快照到达后立刻重排（appliedHidden 已在上面清掉）。
+        this.snapshotPending = this.lastSnapshot.isEmpty() && getMenu().totalModules > 0;
+        if (this.snapshotPending) {
+            for (int band = 0; band < MAX_ROWS; band++) {
+                this.bandTiers[band] = null;
+                this.bandCounts[band] = MODULES_PER_ROW;
+                this.bandMarks[band] = String.valueOf(BAND_MODULES);
+            }
+            return;
         }
         // 本地行表 → 这一屏三组带标记。下游（绘制、槽位可见性、标题文字）读的就是这三组数组，口径与服务端行表一致。
         for (int band = 0; band < MAX_ROWS; band++) {

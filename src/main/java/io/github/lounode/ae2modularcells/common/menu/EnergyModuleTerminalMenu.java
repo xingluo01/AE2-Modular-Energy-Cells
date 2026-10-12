@@ -428,14 +428,14 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      * 客户端本地排完行表之后再按窗口取显示用的那几条带。</p>
      */
     private String buildStructureSnapshot() {
-        var snapshot = new StringBuilder(this.totalModules);
-        for (int index = 0; index < this.totalModules; index++) {
+        var tiers = this.host.moduleTiersInOrder();
+        var snapshot = new StringBuilder(tiers.length * 8);
+        for (int index = 0; index < tiers.length; index++) {
             if (index > 0) {
                 snapshot.append(",");
             }
-            var tier = moduleTierAt(index);
-            if (tier != null) {
-                snapshot.append(tier.id());
+            if (tiers[index] != null) {
+                snapshot.append(tiers[index].id());
             }
         }
         return snapshot.toString();

@@ -990,6 +990,28 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /**
+     * 结构遍历序上的模块等级序列（客户端本地排行表用，见 {@code TerminalRows#build}）。
+     *
+     * <p><b>必须与 {@link #rows()} 同源</b>：同一个 multiblock 遍历序、同一个 {@code tierOfModuleAt}。
+     * 服务端按窗口填槽内容、客户端按这份序列排本地行表，两端只要遍历序不同，就会出现「客户端把 A 模块画在第 i 格、
+     * 服务端把 B 模块填进第 i 格」——玩家会把组件装到别的模块上。别改成走窗口列表（那是随滚动漂移的）。</p>
+     */
+    public EnergyCellTier[] moduleTiersInOrder() {
+        var core = resolveCore();
+        var level = this.level;
+        if (core == null || level == null || core.structureOrigin == null || core.ownStats.side() <= 1) {
+            return new EnergyCellTier[0];
+        }
+        var layout = new MultiblockScanner.Layout(core.structureOrigin, core.ownStats.side());
+        int count = layout.moduleCount();
+        var tiers = new EnergyCellTier[count];
+        for (int index = 0; index < count; index++) {
+            tiers[index] = tierOfModuleAt(level, layout, index);
+        }
+        return tiers;
+    }
+
+    /**
      * 布局里第一块储能模块的位置（确定性：按 {@code modulePos} 的顺序，第一块中选的永远相同）。
      *
      * <p>核心只能落在储能模块上——监控器不存能量、也没有账目，让它当核心会让整段没有能量池、终端也打不开。
