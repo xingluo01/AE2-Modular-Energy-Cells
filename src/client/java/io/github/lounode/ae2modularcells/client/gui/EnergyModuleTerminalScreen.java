@@ -29,6 +29,7 @@ import appeng.menu.SlotSemantics;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
+import io.github.lounode.ae2modularcells.common.logic.TerminalRows;
 import io.github.lounode.ae2modularcells.common.menu.EnergyModuleSlotSemantics;
 import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
 
@@ -149,6 +150,14 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
      * <p>每帧解析一次存下来：绘制、标题、覆盖层、右键选组四处都要问「这条带是什么」，每次都 split 一遍就是
      * 帧内的重复分配。</p>
      */
+    /**
+     * 本地行表：客户端自己排（照 AE2 样板访问终端），见 {@link #refreshLocalRows()}。
+     */
+    private final java.util.List<io.github.lounode.ae2modularcells.common.logic.TerminalRows.Row> localRows = new java.util.ArrayList<>();
+
+    /** 上一次用过的结构快照；变了才重排。 */
+    private String lastSnapshot = "";
+
     private final String[] bandMarks = new String[MAX_ROWS];
 
     /** 已经为哪一份行表要过一次服务端重同步；行表变了就要一次（开屏那次是必须的，见 updateBeforeRender）。 */
@@ -301,7 +310,7 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     private void applySlotVisibility() {
         // 行表每帧只解一次（绘制/标题/覆盖层/选组都读它）；这里先保证它已解——本方法在 init() 里也会被调到，
         // 而那时这一帧的 updateBeforeRender 还没跑过。
-        parseRowLayout();
+        refreshLocalRows();
         if (!this.layoutReady) {
             shiftFooterAnchors();
             return;
@@ -559,51 +568,71 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
      * <p>解析失败就当成空带（{@code -}）：同步字符串要是被截断或版本错位，屏幕上少一行远比抛异常把玩家踢下线好。
      * 两侧本就同源，真不同步时会在界面上看出来，而不是崩掉。</p>
      */
-    private void parseRowLayout() {
-        String layout = getMenu().rowLayout;
-        if (layout == null || layout.isEmpty()) {
-            // 还没收到行表（首帧常见）：标记成「未就绪」，调用方据此不动槽位。
-            this.layoutReady = false;
-            Arrays.fill(this.bandTiers, null);
-            Arrays.fill(this.bandCounts, 0);
-            return;
+    /**
+     * 用服务端下发的**结构快照**在本地排出整张行表（照 AE2 样板访问终端：行表是客户端的事）。
+     *
+     * <p>快照是「按遍历序的等级短 id 序列」（{@code EnergyModuleTerminalMenu#structureSnapshot}），解析后交给
+     * 纯函数 {@link TerminalRows#build}——分组、标题行、每行几个模块全在本地算，不再解析服务端拼好的行表字符串，
+     * 也就不再有「等包那一帧」的补丁。</p>
+     *
+     * <p>快照还没到的那一帧走兜底：**先按全模块行排**（不带标题带），到了再重排一次。这样开屏第一帧就有正确的
+     * 模块格，不会出现「空屏、要等一次画面更新」。</p>
+     */
+    private void refreshLocalRows() {
+        String snapshot = getMenu().structureSnapshot;
+        if (snapshot == null) {
+            snapshot = "";
         }
-        if (!this.layoutReadyApplied) {
-            // 行表刚到手这一帧必须强制重算一次槽位可见性：init() 里那次调用的结果是「布局未就绪」的早退，
-            // 不补这一次就得等下一次开屏（或窗口尺寸变化触发的 init()）才刷新——表现出来的正是
-            // 「画面更新后才显示/重绘全部槽位」。
-            this.layoutReadyApplied = true;
-            this.appliedHidden.clear();
-            // 先把本帧的解析做完再重算（重算要读行标记），所以这里只置标记、末尾统一调用。
-        }
-        this.layoutReady = true;
-        var marks = layout.split(",", -1);
-        for (int band = 0; band < MAX_ROWS; band++) {
-            String mark = band < marks.length ? marks[band] : "";
-            this.bandTiers[band] = null;
-            this.bandCounts[band] = 0;
-            if (mark.length() == 1 && mark.charAt(0) == BAND_MODULES) {
-                this.bandMarks[band] = mark;
-            } else if (mark.startsWith(BAND_TITLE_PREFIX)) {
-                var parts = mark.split(MARK_SEPARATOR, -1);
-                var tier = parts.length > 1 ? EnergyCellTier.byId(parts[1]) : null;
-                if (tier == null) {
-                    this.bandMarks[band] = EMPTY_MARK;
-                    continue;
+        if (!snapshot.equals(this.lastSnapshot)) {
+            this.lastSnapshot = snapshot;
+            this.localRows.clear();
+            if (snapshot.isEmpty()) {
+                int modules = Math.max(0, getMenu().totalModules);
+                for (int first = 0; first < modules; first += MODULES_PER_ROW) {
+                    int count = Math.min(MODULES_PER_ROW, modules - first);
+                    var indices = new int[count];
+                    for (int column = 0; column < count; column++) {
+                        indices[column] = first + column;
+                    }
+                    this.localRows.add(new TerminalRows.Row(null, first, count, indices));
                 }
-                this.bandMarks[band] = mark;
-                this.bandTiers[band] = tier;
-                this.bandCounts[band] = parts.length > 2 ? parseCount(parts[2]) : 0;
             } else {
+                var ids = snapshot.split(",", -1);
+                var tiers = new EnergyCellTier[ids.length];
+                for (int index = 0; index < ids.length; index++) {
+                    tiers[index] = EnergyCellTier.byId(ids[index]);
+                }
+                TerminalRows.build(tiers.length, index -> tiers[index], this.localRows);
+            }
+            this.appliedHidden.clear();
+        }
+        // 本地行表 → 这一屏三组带标记。下游（绘制、槽位可见性、标题文字）读的就是这三组数组，口径与服务端行表一致。
+        for (int band = 0; band < MAX_ROWS; band++) {
+            int rowIndex = getMenu().rowOffset + band;
+            var row = rowIndex >= 0 && rowIndex < this.localRows.size() ? this.localRows.get(rowIndex) : null;
+            this.bandTiers[band] = row == null ? null : row.title();
+            this.bandCounts[band] = row == null ? 0 : row.moduleCount();
+            if (row == null) {
                 this.bandMarks[band] = EMPTY_MARK;
+            } else if (row.isTitle()) {
+                this.bandMarks[band] = BAND_TITLE_PREFIX + row.title().id() + MARK_SEPARATOR + groupModuleCount(rowIndex);
+            } else {
+                this.bandMarks[band] = String.valueOf(BAND_MODULES);
             }
         }
-        if (this.layoutReadyApplied && !this.visibilityReapplied) {
-            // 行表就绪后的第一次重算：把首帧早退时漏掉的隐藏/摆放补上（表尾位移也在 applySlotVisibility 里）。
-            this.visibilityReapplied = true;
-            applySlotVisibility();
-        }
+    }
 
+    /** 本地行表里第 {@code titleRowIndex} 条标题行所属组的模块数（标题后面那几条模块行之和）。 */
+    private int groupModuleCount(int titleRowIndex) {
+        int count = 0;
+        for (int index = titleRowIndex + 1; index < this.localRows.size(); index++) {
+            var row = this.localRows.get(index);
+            if (row.isTitle()) {
+                break;
+            }
+            count += row.moduleCount();
+        }
+        return count;
     }
 
     /** 标题标记里那一段模块数；解析不出来给 0（界面少一个数字，不崩）。 */
