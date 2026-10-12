@@ -33,5 +33,8 @@ public final class ModularCellsJadePlugin implements IWailaPlugin {
         // 本注册用默认优先级，而通用 FE 扩展的优先级排在其后（见 Jade 源码 CommonProxy#getServerExtensionData）。
         registration.registerEnergyStorage(HideThingsExtensionProvider.instance(),
                 EnergyCellModuleBlockEntity.class);
+        // 同理挡掉通用「物品存储」行：我们的 ItemHandler 是整段结构的组件槽视图（上界 12288 槽），
+        // Jade 每趟只收 108 槽，结构一大那行就会「逐步增加」；且它不是玩家可用的容器。见 HideItemStorageProvider。
+        registration.registerItemStorage(HideItemStorageProvider.instance(), EnergyCellModuleBlockEntity.class);
     }
 }
