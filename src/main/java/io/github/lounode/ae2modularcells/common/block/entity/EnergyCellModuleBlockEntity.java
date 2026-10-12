@@ -1561,8 +1561,17 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     @Override
     public void onReady() {
+        // 必须在 super.onReady() **之前**：父类在 super 里就把节点建好并接入网格，而网格只在**入网/离网那一刻**
+        // 按公开标志登记存储节点（EnergyService 的总量是增量维护的缓存值）。晚一步翻旗标，已经登记进去的
+        // 成员不会被摘掉——读档后 ME 侧的总容量依旧按块重复计入。
+        setInternalPublicPowerStorage(isCore());
         super.onReady();
         onGridConnectableSidesChanged();
+        // 兜底第二道：读档路径（loadTag）会把上限设成单块容量，那是「独立放置」的口径；非核心这里再收口成 0，
+        // 与 applyStructureRef 一致——即便真有残留登记，它贡献的也是 0。
+        if (!isCore()) {
+            setInternalMaxPower(0.0D);
+        }
         // 公开标志必须在这里按身份重算一次——这是「ME 显示的网络总容量 = 结构容量」的关键。
         //
         // 构造期所有方块都是 setInternalPublicPowerStorage(true)（那时还分不清自己是不是核心），而把它按身份

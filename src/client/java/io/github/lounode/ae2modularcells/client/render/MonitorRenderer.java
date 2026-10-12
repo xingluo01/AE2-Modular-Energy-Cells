@@ -74,7 +74,15 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
         // 贴面偏移按**方块**单位给（缩放之前），缩放只作用于之后的文字坐标。
         pose.translate(0.0, 0.0, FACE_Z);
         // Y 取负：字体在屏幕坐标系里向下画，而世界坐标的 +Y 是向上——不翻的话正面文字会倒过来。
-        pose.scale(TEXT_SCALE, -TEXT_SCALE, TEXT_SCALE);
+        // 横向也要收：最宽那行文案（例如 "avg 1.23M AE/t"）在 3% 缩放下约 2.5 方块宽，会伸出正面、飘到
+        // 相邻方块前面。取「按高度定的 3%」与「按最宽一行算出的上限（正面可用宽度 0.8 方块）」里更小的那个——
+        // 逐行改缩放会让行距与居中全部错位，所以整块共用一个缩放。
+        float widest = 0.0F;
+        for (Line line : lines) {
+            widest = Math.max(widest, font.width(line.text()));
+        }
+        float textScale = Math.min(TEXT_SCALE, 0.8F / Math.max(1.0F, widest));
+        pose.scale(textScale, -textScale, textScale);
         pose.translate(0.0, -(lines.size() - 1) * LINE_HEIGHT / 2.0F, 0.0);
         for (Line line : lines) {
             float x = -font.width(line.text()) / 2.0F;
