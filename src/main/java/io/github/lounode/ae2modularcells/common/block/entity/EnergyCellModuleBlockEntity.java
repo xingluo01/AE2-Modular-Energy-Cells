@@ -407,27 +407,13 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     /**
      * 客户端同步走存档那份写入代码。
      *
-     * <p>AE2 默认的 update tag 只发 {@code writeToStream} 的那几个字段，<b>不包含</b> {@code saveAdditional}
+     * <p>AE2 默认的 update tag 只发 {@code writeToStream} 的字段，<b>不包含</b> {@code saveAdditional}
      * ——而 {@code corePos} / {@code structureOrigin} / 账目全写在那里。不覆写这一条，客户端的 {@code corePos}
-     * 恒为 null，于是 {@code isFormed()} 恒 false（成型结构在客户端永远画未成型外观），{@code lightRatio()}
-     * 也拿不到值。监控器方块实体已经这么做了（同一套写法）。</p>
+     * 恒为 null，于是 {@code isFormed()} 恒 false（成型结构在客户端永远画未成型外观）。</p>
      */
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
         return saveWithoutMetadata(registries);
-    }
-
-    /**
-     * 收到服务端同步后，把模型数据重新算一遍。
-     *
-     * <p>这一条是必需的，不是保险：模型数据（成型与否、连接位）在客户端是**按位置缓存**的，收到方块实体同步
-     * 并不会自动失效。不主动重算，客户端会一直用旧判定渲染——实机表现为「已经拼成结构了，模块方块还是未成型
-     * 的外观」，即使用户看到的成型纹理没切换过来。</p>
-     */
-    @Override
-    public void handleUpdateTag(CompoundTag data, HolderLookup.Provider registries) {
-        super.handleUpdateTag(data, registries);
-        requestModelDataUpdate();
     }
 
     /** 我是不是这一段的核心（或未成型的独立元件）。 */
@@ -1298,6 +1284,13 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             this.loading = false;
         }
         this.corePos = data.contains("core") ? BlockPos.of(data.getLong("core")) : null;
+        // 成型外观靠模型数据（成型与否 + 连接位），而它在客户端是按位置缓存的：收到同步包不会自动失效。
+        // 服务端在结构变化时已经推过一条（markForClientUpdate = requestModelDataUpdate + sendBlockUpdated），
+        // 这里把客户端那一半补上——不补的话实机就是「结构成型了，模块方块仍是未成型纹理」。
+        // 放 loadTag 而不是 handleUpdateTag：读档、同步包两条路径都会落到这里。
+        if (this.level != null && this.level.isClientSide()) {
+            requestModelDataUpdate();
+        }
         this.structureOrigin = data.contains("origin") ? BlockPos.of(data.getLong("origin")) : null;
 
         // 引用与账目分开处理：非核心的账目本来就是「自己那块」，不能因为它的 side 恒为 1 而把有效的核心引用丢掉
