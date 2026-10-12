@@ -417,6 +417,19 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         return saveWithoutMetadata(registries);
     }
 
+    /**
+     * 收到服务端同步后，把模型数据重新算一遍。
+     *
+     * <p>这一条是必需的，不是保险：模型数据（成型与否、连接位）在客户端是**按位置缓存**的，收到方块实体同步
+     * 并不会自动失效。不主动重算，客户端会一直用旧判定渲染——实机表现为「已经拼成结构了，模块方块还是未成型
+     * 的外观」，即使用户看到的成型纹理没切换过来。</p>
+     */
+    @Override
+    public void handleUpdateTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.handleUpdateTag(data, registries);
+        requestModelDataUpdate();
+    }
+
     /** 我是不是这一段的核心（或未成型的独立元件）。 */
     public boolean isCore() {
         return this.corePos == null;
