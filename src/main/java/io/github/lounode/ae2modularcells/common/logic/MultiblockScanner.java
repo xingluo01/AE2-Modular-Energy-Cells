@@ -154,6 +154,21 @@ public final class MultiblockScanner {
                 int ny = dy + direction.getStepY();
                 int nz = dz + direction.getStepZ();
 
+                // 越界必须先判：visited 位图是按 ±REACH 定长的，拿窗口外的坐标去索引会直接下标越界
+                // （实测：服务端 tick 世界时 ArrayIndexOutOfBoundsException: Index 570 out of bounds for length 562）。
+                // 语义不变，只是提前：窗口外的坐标不能记 visited，但「越界的是不是模块」仍要判——越界的模块
+                // 说明这一段超了边长上界（判不成立），越界的普通方块与本次检测无关。
+                if (Math.abs(nx) > REACH || Math.abs(ny) > REACH || Math.abs(nz) > REACH) {
+                    cursor.set(start.getX() + nx, start.getY() + ny, start.getZ() + nz);
+                    if (!level.isLoaded(cursor)) {
+                        return Result.indeterminate();
+                    }
+                    if (isStructurePart(level.getBlockState(cursor))) {
+                        return Result.notFormed();
+                    }
+                    continue;
+                }
+
                 if (isVisited(visited, nx, ny, nz)) {
                     continue;
                 }
@@ -166,12 +181,6 @@ public final class MultiblockScanner {
                 }
                 if (!isStructurePart(level.getBlockState(cursor))) {
                     continue;
-                }
-                // 越出窗口 = 这一段比边长上界还大，直接判定不成立，不再往下扩。
-                // 判定放在「是不是模块」之后：越界本身不是问题，越界的模块才是——否则一块贴在立方体外面的
-                // 无关方块也能把结构判成不成立。
-                if (Math.abs(nx) > REACH || Math.abs(ny) > REACH || Math.abs(nz) > REACH) {
-                    return Result.notFormed();
                 }
                 if (tail >= queue.length) {
                     // 队列满了却没触发上面的上界判定，说明边界条件被改坏了；宁可当场失败也不要静默截断。
