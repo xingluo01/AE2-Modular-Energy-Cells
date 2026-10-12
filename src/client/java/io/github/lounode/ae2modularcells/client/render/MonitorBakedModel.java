@@ -47,14 +47,23 @@ public class MonitorBakedModel implements IDynamicBakedModel {
 
     private final TextureAtlasSprite unit;
     private final TextureAtlasSprite frontBase;
+
+    /**
+     * 未成型时的正面：监控器自己的那张 {@code monitor} 贴图。
+     *
+     * <p>未成型不等于「空白单元」——它是一台独立放置的监控器，正面要能认出来是什么方块（与模块
+     * 「未成型用自己的面板贴图」同一口径）。成型后才换成 {@link #frontBase} 与三档覆盖层。</p>
+     */
+    private final TextureAtlasSprite frontUnformed;
     private final TextureAtlasSprite lightDark;
     private final TextureAtlasSprite lightMedium;
     private final TextureAtlasSprite lightBright;
 
     public MonitorBakedModel(TextureAtlasSprite unit, TextureAtlasSprite frontBase, TextureAtlasSprite lightDark,
-            TextureAtlasSprite lightMedium, TextureAtlasSprite lightBright) {
+            TextureAtlasSprite lightMedium, TextureAtlasSprite lightBright, TextureAtlasSprite frontUnformed) {
         this.unit = unit;
         this.frontBase = frontBase;
+        this.frontUnformed = frontUnformed;
         this.lightDark = lightDark;
         this.lightMedium = lightMedium;
         this.lightBright = lightBright;
@@ -79,11 +88,10 @@ public class MonitorBakedModel implements IDynamicBakedModel {
         Direction front = state.getValue(MonitorBlock.FACING);
         boolean formed = state.getOptionalValue(MonitorBlock.FORMED).orElse(false);
 
-        // 统一基础：六面先铺 unit；成型时正面换成基础正面贴图。这样未成型就是一张完整的空白单元。
+        // 六面先铺 unit；正面单独一张——未成型用它自己的 monitor 贴图（独立放置的监控器要认得出是什么方块），
+        // 成型后换成基础正面 monitor_base，再由下面的覆盖层叠三档状态。
         builder.setTexture(this.unit);
-        if (formed) {
-            builder.setTexture(front, this.frontBase);
-        }
+        builder.setTexture(front, formed ? this.frontBase : this.frontUnformed);
         builder.addCube(0, 0, 0, OUTER, OUTER, OUTER);
 
         // 覆盖层只画在正面上，且只有成型后才画（同 AE2：叠加层是「已拼好的监控器」的外观）。

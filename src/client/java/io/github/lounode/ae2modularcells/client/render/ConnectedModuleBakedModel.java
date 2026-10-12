@@ -162,7 +162,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                 sprite(event, "monitor_base"),
                 sprite(event, "monitor_light_dark"),
                 sprite(event, "monitor_light_medium"),
-                sprite(event, "monitor_light_bright"));
+                sprite(event, "monitor_light_bright"),
+                sprite(event, "monitor"));
         byBlockId.put(ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "energy_monitor"), monitorModel);
         byBlockId.put(ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "flow_monitor"), monitorModel);
 
