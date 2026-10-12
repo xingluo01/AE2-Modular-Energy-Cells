@@ -383,7 +383,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /**
-     * 网格接入面：<b>六面都允许连接</b>，但结构内部之间与结构外拿到的是不同的节点——见 {@link #getGridNode}。
+     * 网格接入面：<b>六面都允许连接</b>，每一块都可以是玩家接线的那一块。
      * <p>结构一变就调 {@code onGridConnectableSidesChanged()} 让父类把新的可连接面推给节点。</p>
      */
     @Override
@@ -869,7 +869,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // 上限无条件跟着账目走，包括下面提前 return 的那条路径：
         // AE2 的内部池默认上限是 10 000 AE，漏设一次，存量就会被 setStored 静默夹到 1 万——
         // 表现是「界面报得出真实容量、FE 却灌不进去」。
-        setInternalMaxPower((double) newStats.totalCapacity());
+        // 非核心对外报 0 上限：{@code setInternalPublicPowerStorage} 只是翻字段、不发网格事件，而能量服务只在
+        // 节点入/离网时读该旗标——成员入网时已以「提供储能」的身份被登记，事后翻转摘不掉它。
+        // 让幽灵条目贡献 0，避免整段容量被重复计算 (N-1) 份。重新成为核心时会被这里的 isCore 分支还原。
+        setInternalMaxPower(isCore ? (double) newStats.totalCapacity() : 0.0D);
 
         if (Objects.equals(this.corePos, newCorePos)
                 && Objects.equals(this.structureOrigin, newOrigin)
