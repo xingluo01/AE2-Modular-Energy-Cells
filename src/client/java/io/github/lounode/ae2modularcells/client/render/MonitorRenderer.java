@@ -34,8 +34,17 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
     /** 贴面偏移：略微离开方块表面，避免与方块自身表面 z-fighting。 */
     private static final float FACE_Z = 0.502F;
 
-    /** 行距（像素）。 */
+    /** 行距（字体单位；1 字体单位在缩放前等于 1 个方块，所以必须配合下面的 TEXT_SCALE 看）。 */
     private static final float LINE_HEIGHT = 10.0F;
+
+    /**
+     * 字体缩放系数。
+     *
+     * <p>字体是按「GUI 单位」画的：**不缩放的话一行就是 10 个方块高**，数字会糊满整个世界（实测症状：
+     * 监控器上的数字尺寸异常）。这里先把整个绘制坐标缩到 1/33 左右——一行约 0.3 方块，两行连行距约 0.6 方块，
+     * 正好铺满正面大半、四周留边。</p>
+     */
+    private static final float TEXT_SCALE = 0.03F;
 
     private static final int COLOR_PRIMARY = 0xFFFFFFFF;
     private static final int COLOR_SECONDARY = 0xFFB0C4D0;
@@ -62,7 +71,11 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
         pose.translate(0.5, 0.5, 0.5);
         // 画布的 +Z 对准方块朝向：朝北（toYRot=180）时转 -180 度，文字就贴在朝北那一面。
         pose.mulPose(Axis.YP.rotationDegrees(-facing.toYRot()));
-        pose.translate(0.0, -(lines.size() - 1) * LINE_HEIGHT / 2.0F, FACE_Z);
+        // 贴面偏移按**方块**单位给（缩放之前），缩放只作用于之后的文字坐标。
+        pose.translate(0.0, 0.0, FACE_Z);
+        // Y 取负：字体在屏幕坐标系里向下画，而世界坐标的 +Y 是向上——不翻的话正面文字会倒过来。
+        pose.scale(TEXT_SCALE, -TEXT_SCALE, TEXT_SCALE);
+        pose.translate(0.0, -(lines.size() - 1) * LINE_HEIGHT / 2.0F, 0.0);
         for (Line line : lines) {
             float x = -font.width(line.text()) / 2.0F;
             // 自发光：监控器上的数字不该因为天黑看不见，所以用全亮打包光。
