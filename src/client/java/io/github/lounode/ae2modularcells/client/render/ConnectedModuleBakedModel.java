@@ -134,10 +134,13 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
             byBlockId.put(
                     ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, name),
                     new ConnectedModuleBakedModel(
-                            sprite(event, name + "_face"),
-                            sprite(event, name + "_ring_corner"),
-                            sprite(event, name + "_ring_hor"),
-                            sprite(event, name + "_ring_ver"),
+                            // 贴图名必须是**文件路径**（`block/<名>`），不是模型 JSON 里的槽名：
+                            // 面板与边框的实际文件名不带 `_module` 后缀，写错会在资源重载时报「没进方块图集」并在游戏里
+                            // 显示紫黑格——三档各错四个（face + 三个 ring），正是实测看到的紫黑面板与边框。
+                            sprite(event, tier.id() + "_energy_cell"),
+                            sprite(event, "ring_corner"),
+                            sprite(event, "ring_side_hor"),
+                            sprite(event, "ring_side_ver"),
                             sprite(event, tier.id() + "_energy_cell_light"),
                             sprite(event, "energy_cell_light_base")));
         }
