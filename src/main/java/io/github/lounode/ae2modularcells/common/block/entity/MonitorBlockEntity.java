@@ -62,6 +62,9 @@ public class MonitorBlockEntity extends BlockEntity {
         }
         this.corePos = corePos;
         setChanged();
+        // 成型态写进方块状态（照 AE2 合成单元：成型切换走方块状态，客户端必然同步）：
+        // 有核心 = 已经是某段成型结构的一员（核心只在结构成立时才写这个引用）。
+        updateFormedState(corePos != null);
     }
 
     public int storagePercent() {
@@ -92,6 +95,24 @@ public class MonitorBlockEntity extends BlockEntity {
         this.throughput = throughput;
         setChanged();
         return true;
+    }
+
+    /**
+     * 把「是否成型」写进方块状态。
+     *
+     * <p>与模块方块同一口径：成型态是方块状态而不是方块实体数据——模型数据在客户端按位置缓存、靠自定义包推
+     * 容易漏一环，方块状态不会。</p>
+     */
+    private void updateFormedState(boolean formed) {
+        var level = this.level;
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        var state = getBlockState();
+        if (state.hasProperty(MonitorBlock.FORMED) && state.getValue(MonitorBlock.FORMED) != formed) {
+            level.setBlock(worldPosition, state.setValue(MonitorBlock.FORMED, formed),
+                    net.minecraft.world.level.block.Block.UPDATE_CLIENTS);
+        }
     }
 
     /** 粗粒度比较：只有「屏幕上看得出变化」才算变了。 */

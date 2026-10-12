@@ -138,7 +138,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * （每次 {@code getQuads} 现建 builder，档位从方块状态现读）。资源重载日志里应当是「已替换 15 个」。</p>
      */
     public static void install(ModelEvent.ModifyBakingResult event) {
-        Map<ResourceLocation, ConnectedModuleBakedModel> byBlockId = new HashMap<>();
+        Map<ResourceLocation, net.minecraft.client.resources.model.BakedModel> byBlockId = new HashMap<>();
         for (var tier : EnergyCellTier.values()) {
             String name = AEModularCellsRegistries.blockName(tier);
             byBlockId.put(
@@ -155,6 +155,16 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             sprite(event, "energy_cell_light_base"),
                             sprite(event, "unit")));
         }
+
+        // 两个监控器：正面面板 + 三档覆盖层，见 MonitorBakedModel（照 AE2 合成监控器的资产口径）。
+        var monitorModel = new MonitorBakedModel(
+                sprite(event, "unit"),
+                sprite(event, "monitor_base"),
+                sprite(event, "monitor_light_dark"),
+                sprite(event, "monitor_light_medium"),
+                sprite(event, "monitor_light_bright"));
+        byBlockId.put(ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "energy_monitor"), monitorModel);
+        byBlockId.put(ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "flow_monitor"), monitorModel);
 
         int[] replaced = { 0 };
         event.getModels().replaceAll((location, model) -> {

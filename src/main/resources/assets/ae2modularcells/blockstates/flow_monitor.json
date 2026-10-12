@@ -1,20 +1,124 @@
 {
   "variants": {
-    "facing=north": {
-      "model": "ae2modularcells:block/monitor_block",
-      "y": 0
+    "facing=north,fill=0,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
     },
-    "facing=east": {
-      "model": "ae2modularcells:block/monitor_block",
-      "y": 90
+    "facing=north,fill=0,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
     },
-    "facing=south": {
-      "model": "ae2modularcells:block/monitor_block",
-      "y": 180
+    "facing=north,fill=1,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
     },
-    "facing=west": {
-      "model": "ae2modularcells:block/monitor_block",
-      "y": 270
+    "facing=north,fill=1,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=north,fill=2,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=north,fill=2,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=north,fill=3,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=north,fill=3,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=north,fill=4,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=north,fill=4,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=0,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=0,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=1,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=1,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=2,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=2,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=3,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=3,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=4,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=east,fill=4,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=0,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=0,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=1,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=1,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=2,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=2,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=3,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=3,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=4,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=south,fill=4,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=0,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=0,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=1,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=1,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=2,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=2,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=3,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=3,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=4,formed=false": {
+      "model": "ae2modularcells:block/monitor_block"
+    },
+    "facing=west,fill=4,formed=true": {
+      "model": "ae2modularcells:block/monitor_block"
     }
   }
 }

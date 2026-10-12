@@ -16,6 +16,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.item.context.BlockPlaceContext;
 
 import com.mojang.serialization.MapCodec;
@@ -104,6 +106,21 @@ public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBl
     public Kind kind() {
         return this.kind;
     }
+
+    /**
+     * 储能档位（0~4）：与模块同一个属性，由核心的 {@code updateFillLevels} 一起写。
+     *
+     * <p>监控器靠它选覆盖层：0 档 → {@code monitor_light_dark}，1~3 档 → {@code monitor_light_medium}，
+     * 4 档 → {@code monitor_light_bright}（用户口径：覆盖层按储能档位三选一）。</p>
+     */
+    public static final IntegerProperty FILL = IntegerProperty.create("fill", 0, 4);
+
+    /**
+     * 成型与否：与模块同一口径（照 AE2 合成单元，成型态走方块状态）。
+     *
+     * <p>未成型时监控器六面都是空白单元贴图；成型后正面换成基础正面并叠覆盖层。</p>
+     */
+    public static final BooleanProperty FORMED = BooleanProperty.create("formed");
     /**
      * 正面朝玩家（原版水平朝向约定），模型用 blockstate 的 4 个 y 旋转变体摆放。
      *
@@ -116,7 +133,7 @@ public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBl
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(FACING);
+        builder.add(FACING, FILL, FORMED);
     }
 
     /** 方块编解码器：{@code HorizontalDirectionalBlock} 把它声明成抽象方法，这里必须给一个。 */
