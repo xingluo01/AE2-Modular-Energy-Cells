@@ -1,6 +1,7 @@
 package io.github.lounode.ae2modularcells;
 
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -26,7 +27,9 @@ import appeng.api.AECapabilities;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
+import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
+import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
 
 /**
@@ -79,6 +82,8 @@ public final class AEModularCellsRegistries {
                         // 必须写全限定名：本字段的声明在下面，而 Java 不允许静态字段初始化表达式里用简单名「向前引用」
                         // （编译报「非法前向引用」）；限定名不受该规则限制。
                         output.accept(AEModularCellsRegistries.BLANK_ENERGY_UNIT_ITEM.get());
+                        output.accept(AEModularCellsRegistries.ENERGY_MONITOR_ITEM.get());
+                        output.accept(AEModularCellsRegistries.FLOW_MONITOR_ITEM.get());
                     })
                     .build());
 
@@ -100,6 +105,26 @@ public final class AEModularCellsRegistries {
     public static final DeferredItem<BlockItem> BLANK_ENERGY_UNIT_ITEM =
             ITEMS.registerSimpleBlockItem("blank_energy_unit", BLANK_ENERGY_UNIT);
 
+    /**
+     * 两个监控器方块：能量监控器（正面显示储能百分比）与能量流量监控器（FE 输入流量与吞吐量）。
+     *
+     * <p>它们不提供储能、也不提供传输速率；拼进立方体时算结构件（参与成型判定，但不进容量/速率求和）。</p>
+     */
+    public static final DeferredBlock<MonitorBlock> ENERGY_MONITOR = BLOCKS.register("energy_monitor",
+            () -> new MonitorBlock(MonitorBlock.Kind.ENERGY, monitorProperties()));
+
+    public static final DeferredBlock<MonitorBlock> FLOW_MONITOR = BLOCKS.register("flow_monitor",
+            () -> new MonitorBlock(MonitorBlock.Kind.FLOW, monitorProperties()));
+
+    public static final DeferredItem<BlockItem> ENERGY_MONITOR_ITEM =
+            ITEMS.registerSimpleBlockItem("energy_monitor", ENERGY_MONITOR);
+
+    public static final DeferredItem<BlockItem> FLOW_MONITOR_ITEM =
+            ITEMS.registerSimpleBlockItem("flow_monitor", FLOW_MONITOR);
+
+    private static final Map<DeferredBlock<MonitorBlock>, DeferredHolder<BlockEntityType<?>, BlockEntityType<MonitorBlockEntity>>> MONITOR_BLOCK_ENTITIES =
+            new java.util.IdentityHashMap<>();
+
     static {
         for (var tier : EnergyCellTier.values()) {
             String name = blockName(tier);
@@ -111,6 +136,15 @@ public final class AEModularCellsRegistries {
             MODULE_ITEMS.put(tier, ITEMS.registerSimpleBlockItem(name, block));
             MODULE_BLOCK_ENTITIES.put(tier, BLOCK_ENTITIES.register(name, () -> createModuleBlockEntityType(block)));
         }
+        for (var monitor : List.of(ENERGY_MONITOR, FLOW_MONITOR)) {
+            MONITOR_BLOCK_ENTITIES.put(monitor, BLOCK_ENTITIES.register(monitor.getId().getPath(),
+                    () -> createMonitorBlockEntityType(monitor)));
+        }
+    }
+
+    /** 监控器的方块属性：与模块同强度，便于统一。 */
+    private static BlockBehaviour.Properties monitorProperties() {
+        return BlockBehaviour.Properties.of().strength(2.5F, 6.0F).requiresCorrectToolForDrops();
     }
 
     private AEModularCellsRegistries() {
@@ -137,6 +171,20 @@ public final class AEModularCellsRegistries {
     /** 方块（也是方块物品、方块实体、模型与贴图）的注册名。 */
     public static String blockName(EnergyCellTier tier) {
         return tier.id() + "_energy_cell_module";
+    }
+
+    /**
+     * 监控器的方块实体类型：同样要回填给方块（方块先注册、类型后注册）。ticker 两处传 null。
+     */
+    private static BlockEntityType<MonitorBlockEntity> createMonitorBlockEntityType(
+            DeferredBlock<MonitorBlock> block) {
+        AtomicReference<BlockEntityType<MonitorBlockEntity>> holder = new AtomicReference<>();
+        var type = BlockEntityType.Builder.of(
+                (pos, state) -> new MonitorBlockEntity(holder.get(), pos, state),
+                block.get()).build(null);
+        holder.setPlain(type);
+        block.get().setBlockEntityType(type);
+        return type;
     }
 
     public static DeferredBlock<EnergyCellModuleBlock> moduleBlock(EnergyCellTier tier) {

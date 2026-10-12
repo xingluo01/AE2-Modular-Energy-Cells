@@ -168,4 +168,6 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 - ✅ **网格接入（已修）**：AE2 只在它自己的类型表上批量注册块能力 IN_WORLD_GRID_NODE_HOST（线缆侧走 GridHelper#getNodeHost 查它，没有 instanceof 扫描），第三方必须自己注册——AEModularCellsRegistries#registerCapabilities 现已为三档方块实体补上，成型后可被线缆/网络工具连接。
 - ✅ **组件槽对自动化是「整段视图」（已修）**：StructureComponentItemHandler 把整段各模块的组件槽摊平成一条序列，导出/输出总线按序插入就会分散落到不同模块。原来只暴露「总线贴着的那一块」，而总线会长期缓存目标，于是「这块满了」在玩家看来就是「怎么都塞不进去」。成员列表在核心上缓存（与行表同寿命），结构一变即失效。
 - ⬜ **已知代价：组件插入会触发整段重扫**：一次成功的组件插入走 `setItemDirect` → `onChangeInventory` → `rebuildStructure()`（上界 4096 方块）。小结构无感，大结构连续推送（导出总线）时会重复扫。解法方向：改成「标脏 + 每 tick 至多一次重扫」，且必须挂 AE2 的 `IGridTickable`（红线：不注册方块实体 ticker），不能自己 scheduleTick 到普通 `tick()`。
+- 🔄 **两个监控器（进行中）**：方块与方块实体已注册（`energy_monitor` / `flow_monitor`，模型 side=monitor、上下=monitor_base，中英 lang 齐），结构件接口 `StructurePart` 已落地（检测与渲染共用判定；`applyStructure` 里监控器算合法成员、不参与容量/速率求和，并写入 `corePos` 供读数用）。**剩余**：正面朝向与读数渲染（BER：储能百分比 / AE-t 输入流量与 20 tick 吞吐量）、监控器与模块之间的边框连接口径。
+- ⬜ **三档模块自发光层**：`*_light.png` + `energy_cell_light_base.png` 已入库但未接渲染。口径已定：按储能百分比线性（0% 不发光 → 100% 满亮），实现方向是在 `ConnectedModuleBakedModel` 里给模型加 `light`/`light_base` 两个贴图槽并绘制一层按 alpha 的发光面。
 - **不做**：不改 AE2 原版能源元件的行为；不把能量存进每个方块（单一能量池是设计前提）；不在检测里上 tick 轮询。

@@ -30,6 +30,8 @@ import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.ModularCellConstants;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
+import io.github.lounode.ae2modularcells.common.block.StructurePart;
+import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 import io.github.lounode.ae2modularcells.common.StorageComponentTier;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage;
@@ -520,7 +522,16 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         }
         var result = MultiblockScanner.scan(level, worldPosition);
         switch (result.status()) {
-            case FORMED -> applyStructure(result.layout());
+            case FORMED -> {
+                // 核心必须是**储能模块**（立方体最小角那块）：监控器不存能量、也没有账目，让它当核心会让整段
+                // 没有能量池、终端也打不开。口径：最小角不是模块的立方体不算成型——玩家把监控器摆在最低角时，
+                // 这一段退化为各自的单块（挪开监控器后再触发一次结构变更即恢复）。
+                if (level.getBlockEntity(result.layout().origin()) instanceof EnergyCellModuleBlockEntity) {
+                    applyStructure(result.layout());
+                } else {
+                    clearStructure();
+                }
+            }
             case NOT_FORMED -> clearStructure();
             case INDETERMINATE -> {
                 // 有意留空：等下一次触发（放置 / 破坏 / 组件变化 / 玩家右键）再算。
@@ -582,6 +593,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
             layout.modulePos(index, cursor);
             if (core.level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module) {
                 module.becomeStandalone();
+            } else if (core.level.getBlockEntity(cursor) instanceof MonitorBlockEntity monitor) {
+                // 监控器也要抹掉核心引用：不抹的话结构解散后它还存着一个已被拆的坐标，
+                // 而那个坐标会跟着存档一起落盘（下一轮它要拿这个引用读整段账目）。
+                monitor.setCorePos(null);
             }
         }
         becomeStandalone();
@@ -642,7 +657,15 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         for (int index = 0; index < count; index++) {
             layout.modulePos(index, cursor);
             if (!(level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module)) {
-                return;
+                // 不是储能模块的两种情形要分开处理：
+                // ① 监控器等结构件：合法成员，不贡献容量与速率（不求和），继续往下看；
+                // ② 本该是模块的方块却拿不到方块实体（区块刚卸、正在变化）：整轮回作废，
+                //    否则会写出一份「少了某一块」的账目。
+                if (!(level.getBlockState(cursor).getBlock() instanceof StructurePart)
+                        || level.getBlockState(cursor).getBlock() instanceof EnergyCellModuleBlock) {
+                    return;
+                }
+                continue;
             }
             var moduleTier = module.tier();
             // 两侧吃的是不同的组件：容量看存储组件，速率看能量存储组件（各管一条公式）。
@@ -684,6 +707,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
                 } else if (!isAlreadyPartOf(module, layout.origin())) {
                     module.setInternalCurrentPower(0.0);
                 }
+            } else if (level.getBlockEntity(cursor) instanceof MonitorBlockEntity monitor) {
+                // 监控器也是结构成员（参与成型与几何），但不储能、不分担账目，只需要知道「我的核心在哪」
+                // 以便正面读到整段的储能与流量。
+                monitor.setCorePos(layout.origin());
             }
         }
     }
@@ -1005,7 +1032,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
         for (var direction : DIRECTIONS) {
             cursor.setWithOffset(worldPosition, direction);
             // 邻块所在区块未加载时不能问：那会变成一次同步区块加载，而这里是渲染路径（每帧算模型数据）。
-            if (level.isLoaded(cursor) && EnergyCellModuleBlock.isModule(level.getBlockState(cursor))) {
+            if (level.isLoaded(cursor) && MultiblockScanner.isStructurePart(level.getBlockState(cursor))) {
                 connections.add(direction);
             }
         }

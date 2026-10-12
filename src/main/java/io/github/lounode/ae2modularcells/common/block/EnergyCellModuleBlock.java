@@ -36,7 +36,7 @@ import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
  * <p>没有 ticker：方块实体不注册 tick（见 {@code docs/ARCHITECTURE.md} §8），这个类里也就不该出现任何
  * 与时间有关的东西。</p>
  */
-public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlockEntity> {
+public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlockEntity> implements StructurePart {
 
     private final EnergyCellTier tier;
 
@@ -50,19 +50,7 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
         return this.tier;
     }
 
-    /**
-     * 这一块状态是不是模块方块（不分等级）。
-     *
-     * <p><b>渲染的连接判定与结构检测共用它</b>，两处口径必须一致：结构成立与否不看等级（见
-     * {@code MultiblockScanner}），那连接边框也不能看等级——否则一段混拼的立方体画面互不相连、功能上却是一整
-     * 块电池，玩家看不出它已经成型了。</p>
-     *
-     * <p>曾经的口径是「同等级才算相邻」；在允许混等级之后，那个口径会把混拼结构的边框全画成断开。</p>
-     */
-    public static boolean isModule(@Nullable BlockState state) {
-        return state != null && state.getBlock() instanceof EnergyCellModuleBlock;
-    }
-
+    
     /**
      * 右键：只在成型后开屏。
      *

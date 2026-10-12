@@ -8,7 +8,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
 import io.github.lounode.ae2modularcells.common.ModularCellConstants;
-import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
+import io.github.lounode.ae2modularcells.common.block.StructurePart;
 
 /**
  * 多方块结构检测：从一块模块出发，找它所在的「实心立方体」。
@@ -104,8 +104,8 @@ public final class MultiblockScanner {
     }
 
     /** 这一块是不是模块方块（不分等级）。判定本体在方块类上，检测与渲染共用同一个口径。 */
-    public static boolean isModule(@Nullable BlockState state) {
-        return EnergyCellModuleBlock.isModule(state);
+    public static boolean isStructurePart(@Nullable BlockState state) {
+        return state != null && state.getBlock() instanceof StructurePart;
     }
 
     /**
@@ -114,7 +114,7 @@ public final class MultiblockScanner {
      * @return 成立、确定不成立、或「邻居没加载完，判不了」——三种结论见 {@link Status}
      */
     public static Result scan(Level level, BlockPos start) {
-        if (!isModule(level.getBlockState(start))) {
+        if (!isStructurePart(level.getBlockState(start))) {
             return Result.notFormed();
         }
 
@@ -164,7 +164,7 @@ public final class MultiblockScanner {
                 if (!level.isLoaded(cursor)) {
                     return Result.indeterminate();
                 }
-                if (!isModule(level.getBlockState(cursor))) {
+                if (!isStructurePart(level.getBlockState(cursor))) {
                     continue;
                 }
                 // 越出窗口 = 这一段比边长上界还大，直接判定不成立，不再往下扩。
