@@ -43,6 +43,13 @@ public final class HideItemStorageProvider
     }
 
     @Override
+    public int getDefaultPriority() {
+        // 显式给一个小值：Jade 按优先级升序问 provider、取第一个非 null 组，而通用物品行特意用 9999 兜底。
+        // 不覆写也能赢（接口默认值小于 9999），但上游一旦调整默认值就会被通用行抢先，这行就悄悄回来了。
+        return 0;
+    }
+
+    @Override
     public ResourceLocation getUid() {
         return ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "hide_item_storage");
     }

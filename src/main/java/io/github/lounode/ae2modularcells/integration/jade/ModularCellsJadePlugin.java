@@ -37,4 +37,11 @@ public final class ModularCellsJadePlugin implements IWailaPlugin {
         // Jade 每趟只收 108 槽，结构一大那行就会「逐步增加」；且它不是玩家可用的容器。见 HideItemStorageProvider。
         registration.registerItemStorage(HideItemStorageProvider.instance(), EnergyCellModuleBlockEntity.class);
     }
+
+    @Override
+    public void registerClient(snownee.jade.api.IWailaClientRegistration registration) {
+        // Jade 的服务端与客户端是两套注册表：上面那条只负责在服务端给出「空组」，
+        // 客户端这边也要有同 UID 的 provider，否则会留下「未知 UID / 找不到 client provider」的告警。
+        registration.registerItemStorageClient(HideItemStorageProvider.instance());
+    }
 }
