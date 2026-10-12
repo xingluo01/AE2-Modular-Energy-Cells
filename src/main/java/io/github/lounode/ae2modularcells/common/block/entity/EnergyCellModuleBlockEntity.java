@@ -391,7 +391,28 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     @Override
     public java.util.Set<Direction> getGridConnectableSides(appeng.api.orientation.BlockOrientation orientation) {
-        return isCore() ? java.util.EnumSet.allOf(Direction.class) : java.util.EnumSet.noneOf(Direction.class);
+        // 六面全开：结构里每一块都可以是玩家接线的那一块。实测反馈「成型的结构无法从任何一个模块连接 ME 网络」
+        // 就是因为这里只对核心开面，而核心是最小角那一块、对玩家不可见——线接在别处永远接不上。
+        return java.util.EnumSet.allOf(Direction.class);
+    }
+
+    /**
+     * 网格节点的转发：非核心成员把**任何一面**上的连接请求交给核心那个唯一的节点。
+     *
+     * <p>两个约束同时成立：玩家可以从结构任意一块接线（像 AE2 合成单元那样），而网格里始终只有核心一个节点、
+     * 一份存储账目——不会变成「每个方块一个存储」。核心所在区块未加载时退回自己的节点（那属于断引用场景，
+     * 结构本来也不成立）。</p>
+     */
+    @Override
+    public appeng.api.networking.IGridNode getGridNode(Direction direction) {
+        var core = resolveCore();
+        if (core != null && core != this) {
+            var coreNode = core.getMainNode().getNode();
+            if (coreNode != null) {
+                return coreNode;
+            }
+        }
+        return super.getGridNode(direction);
     }
 
     /** 我是不是这一段的核心（或未成型的独立元件）。 */

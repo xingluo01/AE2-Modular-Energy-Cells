@@ -103,15 +103,26 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      */
     private final TextureAtlasSprite lightBase;
 
+    /**
+     * 未成型外观：四周没有同类模块时用空白单元那套贴图（{@code unit} / {@code unit_base}）。
+     *
+     * <p>不这么做的话，孤零零一块模块也会画满连接边框（因为边框只看「四周有没有同类块」），看起来像已经成型了
+     * ——实测反馈的「未成型仍用成型连接纹理」就是这个原因。</p>
+     */
+    private final TextureAtlasSprite unit;
+    private final TextureAtlasSprite unitBase;
+
     private ConnectedModuleBakedModel(TextureAtlasSprite face, TextureAtlasSprite ringCorner,
             TextureAtlasSprite ringHor, TextureAtlasSprite ringVer, TextureAtlasSprite light,
-            TextureAtlasSprite lightBase) {
+            TextureAtlasSprite lightBase, TextureAtlasSprite unit, TextureAtlasSprite unitBase) {
         this.face = face;
         this.ringCorner = ringCorner;
         this.ringHor = ringHor;
         this.ringVer = ringVer;
         this.light = light;
         this.lightBase = lightBase;
+        this.unit = unit;
+        this.unitBase = unitBase;
     }
 
     /**
@@ -142,7 +153,9 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             sprite(event, "ring_side_hor"),
                             sprite(event, "ring_side_ver"),
                             sprite(event, tier.id() + "_energy_cell_light"),
-                            sprite(event, "energy_cell_light_base")));
+                            sprite(event, "energy_cell_light_base"),
+                            sprite(event, "unit"),
+                            sprite(event, "unit_base")));
         }
 
         int[] replaced = { 0 };
@@ -209,6 +222,17 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         var builder = new CubeBuilder(quads);
         // 每次只为当前这一面出几何：六个面各调一次，在这里算别的面是白花的。
         builder.setDrawFaces(EnumSet.of(side));
+
+        // 未成型：四周一个同类模块都没有，这一块还没拼进任何结构。此时画未成型外观（空白单元那套贴图），
+        // 而不是成型后才该出现的连接边框与角。成型至少要 3×3×3，凑不齐的段里每一块都至少有一个邻居，
+        // 所以只有真正孤立的单块会走到这里。
+        if (connections.isEmpty()) {
+            builder.setTexture(this.unit);
+            builder.setTexture(Direction.UP, this.unitBase);
+            builder.setTexture(Direction.DOWN, this.unitBase);
+            builder.addCube(0, 0, 0, OUTER, OUTER, OUTER);
+            return quads;
+        }
 
         addCornerCaps(builder, connections, side);
         addRingStrips(builder, connections, side);

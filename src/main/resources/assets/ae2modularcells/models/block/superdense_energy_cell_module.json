@@ -8,6 +8,8 @@
     "ring_hor": "ae2modularcells:block/ring_side_hor",
     "ring_ver": "ae2modularcells:block/ring_side_ver",
     "superdense_energy_cell_light": "ae2modularcells:block/superdense_energy_cell_light",
-    "energy_cell_light_base": "ae2modularcells:block/energy_cell_light_base"
+    "energy_cell_light_base": "ae2modularcells:block/energy_cell_light_base",
+    "unit": "ae2modularcells:block/unit",
+    "unit_base": "ae2modularcells:block/unit_base"
   }
 }
