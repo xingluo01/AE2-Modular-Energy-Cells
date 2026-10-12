@@ -1563,6 +1563,18 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     public void onReady() {
         super.onReady();
         onGridConnectableSidesChanged();
+        // 公开标志必须在这里按身份重算一次——这是「ME 显示的网络总容量 = 结构容量」的关键。
+        //
+        // 构造期所有方块都是 setInternalPublicPowerStorage(true)（那时还分不清自己是不是核心），而把它按身份
+        // 收口的那句 setInternalPublicPowerStorage(isCore()) 只在**结构变更**路径（afterStructureReferenceChanged）上跑。
+        // 读档、以及区块后加载，都不走那条路：结果是一个成型结构里**每个成员都对外公开存储**，
+        // 而网格是逐节点相加的（EnergyService 只按 isAEPublicPowerStorage 过滤，MULTIBLOCK 只管通道与寻路，
+        // 不去重能量计数），于是总数变成 N 倍；又因为非核心的 getInternalMaxPower()/getInternalCurrentPower()
+        // 都返回整段账目，N 个公开成员各报一份全量 ⇒ 与界面显示的结构容量差 N 倍。
+        //
+        // 这里和结构变更路径一样幂等，重复调不花代价；独立放置的单块 corePos 为 null、isCore() 为 true，
+        // 照常公开——单块本来就是一台完整的储能元件。
+        setInternalPublicPowerStorage(isCore());
         // 自愈一次成型态：升级前的存档里 formed 还是默认 false；结构在某成员区块卸载期间于别处解散时，
         // 成员读档后引用还在、状态却是 true。只在「确实是成型结构」时补，避免核心区块未加载时把 true 抹掉。
         if (isFormed()) {
