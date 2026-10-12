@@ -60,6 +60,9 @@ public class MonitorBakedModel implements IDynamicBakedModel {
         this.lightBright = lightBright;
     }
 
+    /** 正面覆盖层相对整面的内缩量：1px。照 AE2 的内嵌小立方体口径。 */
+    private static final float INSET = 1.0F / 16F;
+
     @Override
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource rand,
             ModelData extraData, @Nullable RenderType renderType) {
@@ -85,13 +88,14 @@ public class MonitorBakedModel implements IDynamicBakedModel {
 
         // 覆盖层只画在正面上，且只有成型后才画（同 AE2：叠加层是「已拼好的监控器」的外观）。
         if (formed && side == front) {
-            float intensity = fillIntensity(state);
             builder.setTexture(side, lightFor(state));
             builder.setEmissiveMaterial(true);
-            builder.setColorRGB(intensity, intensity, intensity);
-            builder.addCube(0, 0, 0, OUTER, OUTER, OUTER);
-            // builder 是复用的：颜色与自发光标记都要归位，否则后面画的普通面也会被染色/满地发光。
-            builder.setColorRGB(1.0F, 1.0F, 1.0F);
+            // 正面构成照 AE2 合成监控器：底板之上再叠一个**内嵌**的小立方体（四周各收 1px），不是与底板共面的整面。
+            // 共面两层会互相闪烁，也看不出「面板 + 状态灯」的结构；内嵌后正好留出一圈底板边框。
+            builder.addCube(INSET, INSET, INSET, OUTER - INSET, OUTER - INSET, OUTER - INSET);
+            // 亮度由 dark/medium/bright 三张贴图本身承载（AE2 就是这么分档的），这里不再按比例调暗——
+            // 调暗会把贴图里已经分好的档位差异压平，也偏离了上游的上色口径。
+            // builder 是复用的：自发光标记要归位，否则后面画的普通面也会满地发光。
             builder.setEmissiveMaterial(false);
         }
 
@@ -105,16 +109,6 @@ public class MonitorBakedModel implements IDynamicBakedModel {
             return this.lightDark;
         }
         return fill >= 4 ? this.lightBright : this.lightMedium;
-    }
-
-    /**
-     * 覆盖层亮度：0 档也有底亮（覆盖层用来区分状态，不能完全看不见），满档最亮。
-     *
-     * <p>自发光本身不受世界光照影响，这里的系数只调「亮到什么程度」。</p>
-     */
-    private static float fillIntensity(BlockState state) {
-        int fill = state.getOptionalValue(MonitorBlock.FILL).orElse(0);
-        return 0.45F + 0.55F * (fill / 4.0F);
     }
 
     @Override
