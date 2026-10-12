@@ -614,6 +614,16 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             return;
         }
         int fill = fillLevel(lightRatio());
+        // 迟滞：比例停在档边界上时，四舍五入会来回跳（0↔1），而每次 setBlock 都会让客户端**重置挖掘进度**
+        // ——表现为「结构成型后怎么挖都挖不掉」。只有确实离线一截（越过相邻边界 1/4 档）才换档。
+        // AE2 合成单元没有这个问题：它的方块状态只在换档（升级）时变，不跟着储量实时变。
+        int current = getBlockState().getOptionalValue(EnergyCellModuleBlock.FILL).orElse(fill);
+        if (fill != current) {
+            float boundary = (current + (fill > current ? 0.5f : -0.5f)) / 4f;
+            if (Math.abs(lightRatio() - boundary) < 0.06f) {
+                fill = current;
+            }
+        }
         if (this.structureOrigin == null || this.ownStats.side() <= 1) {
             // 未成型：只有自己这一块，也得跟单块账目一致。
             applyFill(level, this.worldPosition, fill);

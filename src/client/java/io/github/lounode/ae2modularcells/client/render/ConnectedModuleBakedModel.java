@@ -107,8 +107,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
     /**
      * 未成型外观：四周没有同类模块时，这一块还没拼进结构。
      *
-     * <p>用的是模块化空白能量单元那张 {@code unit}（六面全用它，含上下）——美术口径：未成型的模块就长成空白单元。
-     * 成型后才换成「统一基础层 + 档位覆盖层」那一套。</p>
+     * <p>是「模块化空白能量单元」那张 {@code unit}。它只用在空白单元方块自己的模型上；
+     * 模块未成型时铺的是各档自己的面板贴图（{@code face}），成型后才换成「统一基础层 + 档位覆盖层」那一套。</p>
      */
     private final TextureAtlasSprite unit;
 
@@ -235,7 +235,9 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         // 以前这个判定读模型数据，而模型数据在客户端按位置缓存、靠自定义包推—— 漏一环就出现「结构成型了、
         // 方块还是未成型纹理」。方块状态不会有这个问题。
         if (state == null || !state.getOptionalValue(EnergyCellModuleBlock.FORMED).orElse(false)) {
-            builder.setTexture(this.unit);
+            // 未成型：用**自己那一张**面板贴图铺满六面——各档长得不一样，摆放时一眼能分清是哪一档储能元件。
+            // unit（模块化空白能量单元那张）是空白单元方块自己的外观，不是模块未成型时的样子。
+            builder.setTexture(this.face);
             builder.addCube(0, 0, 0, OUTER, OUTER, OUTER);
             return quads;
         }

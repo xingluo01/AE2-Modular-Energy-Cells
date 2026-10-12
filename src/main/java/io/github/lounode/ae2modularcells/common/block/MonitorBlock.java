@@ -142,6 +142,25 @@ public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBl
         return simpleCodec(properties -> new MonitorBlock(this.kind, properties));
     }
 
+    /**
+     * 监控器自己没有界面：右键转交给结构里的模块方块。
+     *
+     * <p>合成监控器在上游是挂在合成 CPU 上的附属部件，界面归 CPU；这里结构的主界面在模块上，
+     * 而监控器与模块是同一个方块体系（{@link StructurePart}），所以直接转发到相邻模块的交互口径，
+     * 由模块那一侧判断成型/未成型该怎么开。</p>
+     */
+    @Override
+    protected net.minecraft.world.InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,
+            net.minecraft.world.entity.player.Player player, net.minecraft.world.phys.BlockHitResult hit) {
+        for (var direction : net.minecraft.core.Direction.values()) {
+            var neighbour = pos.relative(direction);
+            if (level.getBlockState(neighbour).getBlock() instanceof EnergyCellModuleBlock module) {
+                return module.useWithoutItem(level.getBlockState(neighbour), level, neighbour, player, hit);
+            }
+        }
+        return net.minecraft.world.InteractionResult.PASS;
+    }
+
     public void setBlockEntityType(BlockEntityType<MonitorBlockEntity> type) {
         this.blockEntityType.setPlain(type);
     }
