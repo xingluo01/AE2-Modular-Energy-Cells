@@ -38,6 +38,14 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
     private static final float LINE_HEIGHT = 10.0F;
 
     /**
+     * 字形高度（字体单位）。
+     *
+     * <p>字体以**基线**为锚：字形落在基线之下，基线上方是空的。竖直居中若只按 {@code (n-1)*行距/2} 对齐，
+     * 整块文字的视觉重心会偏下约半个字形——两行时尤其明显。补上半个字形高度才是真正的居中。</p>
+     */
+    private static final float GLYPH_HEIGHT = 8.0F;
+
+    /**
      * 字体缩放系数。
      *
      * <p>字体是按「GUI 单位」画的：**不缩放的话一行就是 10 个方块高**，数字会糊满整个世界（实测症状：
@@ -57,6 +65,11 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
     public void render(MonitorBlockEntity monitor, float partialTick, PoseStack pose, MultiBufferSource buffers,
             int packedLight, int packedOverlay) {
         if (!(monitor.getBlockState().getBlock() instanceof MonitorBlock block)) {
+            return;
+        }
+        // 常态（未成型）不画读数：那时它还没接进任何结构，没有可监控的对象，读数无从谈起——
+        // 正面本身就是它的常态外观（monitor 贴图）。成型后才出数字。
+        if (!monitor.getBlockState().getOptionalValue(MonitorBlock.FORMED).orElse(false)) {
             return;
         }
         List<Line> lines = lines(block, monitor);
@@ -83,7 +96,8 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
         }
         float textScale = Math.min(TEXT_SCALE, 0.8F / Math.max(1.0F, widest));
         pose.scale(textScale, -textScale, textScale);
-        pose.translate(0.0, -(lines.size() - 1) * LINE_HEIGHT / 2.0F, 0.0);
+        // 竖直居中：先按行数摆中，再补半个字形（字体以基线为锚，不补就整体偏下半个字形）。
+        pose.translate(0.0, -(lines.size() - 1) * LINE_HEIGHT / 2.0F + GLYPH_HEIGHT / 2.0F, 0.0);
         for (Line line : lines) {
             float x = -font.width(line.text()) / 2.0F;
             // 自发光：监控器上的数字不该因为天黑看不见，所以用全亮打包光。
