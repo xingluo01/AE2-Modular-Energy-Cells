@@ -413,7 +413,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
 
     @Override
     public boolean useAmbientOcclusion() {
-        return true;
+        return false;
     }
 
     @Override
@@ -423,7 +423,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
 
     @Override
     public boolean usesBlockLight() {
-        return true;
+        return false;
     }
 
     @Override
@@ -433,7 +433,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
 
     @Override
     public TextureAtlasSprite getParticleIcon() {
-        return this.face;
+        // 照 AE2 CraftingCubeBakedModel：粒子用边框贴图，不是面板。
+        return this.ringCorner;
     }
 
     @Override
