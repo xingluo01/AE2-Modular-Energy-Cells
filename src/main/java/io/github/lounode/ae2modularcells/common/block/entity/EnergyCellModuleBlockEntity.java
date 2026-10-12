@@ -132,6 +132,16 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     private long inputWindowSum;
 
+    /**
+     * 平滑后的输入速率（AE/t），界面读数与监控器都用它。
+     *
+     * <p>{@code -1} 表示还没建立基准（第一次结算直接取原始值，避免从 0 慢慢爬）。</p>
+     */
+    private long smoothedInputRate = -1L;
+
+    /** 指数滑动平均系数：越大越跟手、越小越平缓。0.25 在「不闪」与「跟手」之间。 */
+    private static final double INPUT_RATE_SMOOTHING = 0.25D;
+
     /** 窗口起点（游戏刻）。每结算一次就挪到当前刻。 */
     private long inputWindowStartTick;
 
@@ -320,11 +330,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         if (core != null && core != this) {
             return core.averageInputRate();
         }
-        if (this.level == null) {
-            return 0L;
-        }
-        long span = Math.max(1L, this.level.getGameTime() - this.inputWindowStartTick);
-        return Math.round((double) this.inputWindowSum / span);
+        return Math.max(0L, this.smoothedInputRate);
     }
 
     public long inputRate() {
@@ -697,18 +703,31 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         }
         var layout = new MultiblockScanner.Layout(this.structureOrigin, this.ownStats.side());
         var cursor = new BlockPos.MutableBlockPos();
-        // 监控器的档位与读数也在这一个循环里推：它们的槽位同样在 multiblock 布局里（见 applyStructureRefs）。
-        long now = level.getGameTime();
+        // 先把这一段窗口结算掉（原始均值揉进 EMA），再拿**平滑值**去推监控器与界面。
+        // 顺序反了的话推出去的永远是上一秒的值，屏幕上就是「慢半拍 + 每秒跳一次」。
+        settleInputWindow(level.getGameTime());
         int percent = Math.round(lightRatio() * 100F);
-        long average = Math.round((double) this.inputWindowSum
-                / Math.max(1L, now - this.inputWindowStartTick));
+        long average = Math.max(0L, this.smoothedInputRate);
         int count = layout.moduleCount();
         for (int index = 0; index < count; index++) {
             layout.modulePos(index, cursor);
             applyFill(level, cursor, fill);
             applyMonitorReadout(level, cursor, fill, percent, average);
         }
-        // 窗口结算：这一秒的账收进 averageInputRate() 的下一个窗口。
+    }
+
+    /**
+     * 结算「近 1 秒」输入窗口：算出这一段的原始均值，再揉进指数滑动平均。
+     *
+     * <p>为什么要平滑：直接用每段窗口的原始均值，读数会每 20 tick 跳一次——输入只要有一点波动，
+     * 界面上就是闪烁。EMA 的表现才是参考源那种「持续供能时几秒内收敛到一个稳定值，停供后平缓落到 0」。</p>
+     */
+    private void settleInputWindow(long now) {
+        long span = Math.max(1L, now - this.inputWindowStartTick);
+        long raw = Math.round((double) this.inputWindowSum / span);
+        this.smoothedInputRate = this.smoothedInputRate < 0L
+                ? raw
+                : Math.round(this.smoothedInputRate + (raw - this.smoothedInputRate) * INPUT_RATE_SMOOTHING);
         this.inputWindowStartTick = now;
         this.inputWindowSum = 0L;
     }
