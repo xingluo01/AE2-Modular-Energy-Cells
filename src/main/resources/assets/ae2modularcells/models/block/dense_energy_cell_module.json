@@ -9,7 +9,6 @@
     "ring_ver": "ae2modularcells:block/ring_side_ver",
     "dense_energy_cell_light": "ae2modularcells:block/dense_energy_cell_light",
     "energy_cell_light_base": "ae2modularcells:block/energy_cell_light_base",
-    "unit": "ae2modularcells:block/unit",
-    "unit_base": "ae2modularcells:block/unit_base"
+    "unit": "ae2modularcells:block/unit"
   }
 }

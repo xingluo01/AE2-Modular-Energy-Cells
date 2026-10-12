@@ -105,17 +105,16 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
     private final TextureAtlasSprite lightBase;
 
     /**
-     * 未成型外观：四周没有同类模块时用空白单元那套贴图（{@code unit} / {@code unit_base}）。
+     * 未成型外观：四周没有同类模块时，这一块还没拼进结构。
      *
-     * <p>不这么做的话，孤零零一块模块也会画满连接边框（因为边框只看「四周有没有同类块」），看起来像已经成型了
-     * ——实测反馈的「未成型仍用成型连接纹理」就是这个原因。</p>
+     * <p>用的是模块化空白能量单元那张 {@code unit}（六面全用它，含上下）——美术口径：未成型的模块就长成空白单元。
+     * 成型后才换成「统一基础层 + 档位覆盖层」那一套。</p>
      */
     private final TextureAtlasSprite unit;
-    private final TextureAtlasSprite unitBase;
 
     private ConnectedModuleBakedModel(TextureAtlasSprite face, TextureAtlasSprite ringCorner,
             TextureAtlasSprite ringHor, TextureAtlasSprite ringVer, TextureAtlasSprite light,
-            TextureAtlasSprite lightBase, TextureAtlasSprite unit, TextureAtlasSprite unitBase) {
+            TextureAtlasSprite lightBase, TextureAtlasSprite unit) {
         this.face = face;
         this.ringCorner = ringCorner;
         this.ringHor = ringHor;
@@ -123,7 +122,6 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         this.light = light;
         this.lightBase = lightBase;
         this.unit = unit;
-        this.unitBase = unitBase;
     }
 
     /**
@@ -155,8 +153,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             sprite(event, "ring_side_ver"),
                             sprite(event, tier.id() + "_energy_cell_light"),
                             sprite(event, "energy_cell_light_base"),
-                            sprite(event, "unit"),
-                            sprite(event, "unit_base")));
+                            sprite(event, "unit")));
         }
 
         int[] replaced = { 0 };
@@ -233,11 +230,9 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         builder.setDrawFaces(EnumSet.of(side));
 
         // 未成型：这一块还没拼进任何成型结构（结构检测的结论，不是「有没有邻居」）。此时用未成型纹理
-        // （空白单元那套 unit / unit_base），不画连接边框、角与发光层——那些是成型后才该出现的东西。
+        // —— 模块化空白能量单元那张 unit，六面全用它，不画连接边框、角与覆盖层。
         if (!isFormed(extraData)) {
             builder.setTexture(this.unit);
-            builder.setTexture(Direction.UP, this.unitBase);
-            builder.setTexture(Direction.DOWN, this.unitBase);
             builder.addCube(0, 0, 0, OUTER, OUTER, OUTER);
             return quads;
         }
@@ -269,30 +264,23 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
             }
         }
 
-        builder.setTexture(this.face);
+        // 成型后的层序（美术口径）：统一基础层 → 档位覆盖层。
+        // 面板 {tier}_energy_cell 不再画在方块上（只给物品与破块粒子用，见 getParticleIcon）：
+        // 成型后的基础层是三档共用的 energy_cell_light_base——这就是「成型后所有模块长得一样，
+        // 靠覆盖层区分原来是哪种模块」那套口径。
+        builder.setTexture(this.lightBase);
         builder.addCube(x1, y1, z1, x2, y2, z2);
 
-        // 发光层画在基础面**之后**：两面共面，后画的在上。这里必须靠后，因为基础面贴图是全不透明的
-        // （已解出：三档 `*_energy_cell.png` 无 tRNS），先画就什么也看不到；而光贴图大半透明，
-        // 叠上去正好只在它的线网格处发光。AE2 控制器那两个模型反过来（光层在前），是因为它的基础贴图带透明窗。
-        //
-        // 强度按储能档位（EnergyCellModuleBlock#FILL）取：setEmissiveMaterial 让这层不吃世界光照，
-        // setColorRGB 再按档位乘一个系数——两者都是 AE2 自己的 CubeBuilder 提供的公开做法。
-        float intensity = fillIntensity(state);
-        if (intensity > 0.0F) {
-            builder.setTexture(this.light);
-            builder.setEmissiveMaterial(true);
-            builder.setColorRGB(intensity, intensity, intensity);
-            builder.addCube(x1, y1, z1, x2, y2, z2);
-            // 这个 builder 是复用的：颜色与自发光标记都要归位，否则后面画的普通面也会被染色/满地发光。
-            builder.setColorRGB(1.0F, 1.0F, 1.0F);
-            builder.setEmissiveMaterial(false);
-        } else {
-            // 0 档：发光网格整片透明（那张图的透明部分占大半），什么也不画，光层就等于不存在；
-            // 这一格用底板补上，于是“空电”也有一层可看的外观。
-            builder.setTexture(this.lightBase);
-            builder.addCube(x1, y1, z1, x2, y2, z2);
-        }
+        // ② 档位覆盖层：每档一张 {tier}_energy_cell_light，用来区分「这一块原本是哪种模块」。
+        // 它一直画（否则玩家认不出模块种类），亮度随整段储能档位走；自发光，所以黑天也亮。
+        float intensity = 0.35F + 0.65F * fillIntensity(state);
+        builder.setTexture(this.light);
+        builder.setEmissiveMaterial(true);
+        builder.setColorRGB(intensity, intensity, intensity);
+        builder.addCube(x1, y1, z1, x2, y2, z2);
+        // 这个 builder 是复用的：颜色与自发光标记都要归位，否则后面画的普通面也会被染色/满地发光。
+        builder.setColorRGB(1.0F, 1.0F, 1.0F);
+        builder.setEmissiveMaterial(false);
 
         return quads;
     }
