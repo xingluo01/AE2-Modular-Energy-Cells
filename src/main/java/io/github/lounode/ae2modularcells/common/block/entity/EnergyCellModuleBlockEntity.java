@@ -1070,9 +1070,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // 上限无条件跟着账目走，包括下面提前 return 的那条路径：
         // AE2 的内部池默认上限是 10 000 AE，漏设一次，存量就会被 setStored 静默夹到 1 万——
         // 表现是「界面报得出真实容量、FE 却灌不进去」。
-        // 非核心对外报 0 上限：{@code setInternalPublicPowerStorage} 只是翻字段、不发网格事件，而能量服务只在
-        // 节点入/离网时读该旗标——成员入网时已以「提供储能」的身份被登记，事后翻转摘不掉它。
-        // 让幽灵条目贡献 0，避免整段容量被重复计算 (N-1) 份。重新成为核心时会被这里的 isCore 分支还原。
+        // 非核心报 0 上限（口径：独立放置 = 单块容量、成员 = 0）。
+        //
+        // 诊断要记清楚，否则会照错的方向修：网格只在**节点入/离网那一刻**按 {@code isAEPublicPowerStorage()}
+        // 登记存储节点，而网格的总量是增量维护的缓存值——成员入网后再翻旗标，已经登记的那一条摘不掉。
+        // 所以真正的闸门是「旗标在入网之前就是对的」（见 onReady() 里 setInternalPublicPowerStorage 的位置），
+        // **不是**这句 setInternalMaxPower：本类的 getInternalMaxPower() 覆盖版对非核心返回 stats().totalCapacity()，
+        // 网格读的是覆盖版，父类这个字段对网格没有效果——它只影响父类自己的 setStored 夹取。
+        // 重新成为核心时会被这里的 isCore 分支还原。
         setInternalMaxPower(isCore ? (double) newStats.totalCapacity() : 0.0D);
 
         if (Objects.equals(this.corePos, newCorePos)
@@ -1572,18 +1577,6 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         if (!isCore()) {
             setInternalMaxPower(0.0D);
         }
-        // 公开标志必须在这里按身份重算一次——这是「ME 显示的网络总容量 = 结构容量」的关键。
-        //
-        // 构造期所有方块都是 setInternalPublicPowerStorage(true)（那时还分不清自己是不是核心），而把它按身份
-        // 收口的那句 setInternalPublicPowerStorage(isCore()) 只在**结构变更**路径（afterStructureReferenceChanged）上跑。
-        // 读档、以及区块后加载，都不走那条路：结果是一个成型结构里**每个成员都对外公开存储**，
-        // 而网格是逐节点相加的（EnergyService 只按 isAEPublicPowerStorage 过滤，MULTIBLOCK 只管通道与寻路，
-        // 不去重能量计数），于是总数变成 N 倍；又因为非核心的 getInternalMaxPower()/getInternalCurrentPower()
-        // 都返回整段账目，N 个公开成员各报一份全量 ⇒ 与界面显示的结构容量差 N 倍。
-        //
-        // 这里和结构变更路径一样幂等，重复调不花代价；独立放置的单块 corePos 为 null、isCore() 为 true，
-        // 照常公开——单块本来就是一台完整的储能元件。
-        setInternalPublicPowerStorage(isCore());
         // 自愈一次成型态：升级前的存档里 formed 还是默认 false；结构在某成员区块卸载期间于别处解散时，
         // 成员读档后引用还在、状态却是 true。只在「确实是成型结构」时补，避免核心区块未加载时把 true 抹掉。
         if (isFormed()) {
