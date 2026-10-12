@@ -160,6 +160,16 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     @GuiSync(73)
     public String selectedTier = "";
 
+    /**
+     * 结构快照：按 {@code host.moduleAt} 遍历序、每模块一个等级短 id，逗号分隔。
+     *
+     * <p>客户端拿它跑 {@code common/logic/TerminalRows.build}（纯函数，不碰世界）在本地得出整张行表——
+     * 分组、标题带、模块带的行数全在客户端算，不再由服务端下发「哪一条带是什么」的字符串。
+     * 上限是 16³=4096 个字符，且只在结构或账目变化时更新（不是每 tick）。</p>
+     */
+    @GuiSync(74)
+    public String structureSnapshot = "";
+
     public EnergyModuleTerminalMenu(int id, Inventory playerInventory, EnergyCellModuleBlockEntity host) {
         super(TYPE, id, playerInventory, host);
         this.host = host;
@@ -408,6 +418,27 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         this.rowLayout = layout.toString();
         // 行表定型后重算服务端镜像：这一句是「模块本体能不能同步到客户端」的唯一开关。
         this.moduleDisplay.refreshServerStacks();
+        this.structureSnapshot = buildStructureSnapshot();
+    }
+
+    /**
+     * 按遍历序拼结构快照（见 {@link #structureSnapshot}）。
+     *
+     * <p>这里用 {@code totalModules}（边长³）而不是窗口内容：快照描述的是**整段结构**，与当前窗口落在哪儿无关——
+     * 客户端本地排完行表之后再按窗口取显示用的那几条带。</p>
+     */
+    private String buildStructureSnapshot() {
+        var snapshot = new StringBuilder(this.totalModules);
+        for (int index = 0; index < this.totalModules; index++) {
+            if (index > 0) {
+                snapshot.append(",");
+            }
+            var tier = moduleTierAt(index);
+            if (tier != null) {
+                snapshot.append(tier.id());
+            }
+        }
+        return snapshot.toString();
     }
 
     /** 第 {@code titleRowIndex} 条标题行所对应的等级组里有多少个模块（标题后面那行文字要用）。 */
