@@ -210,16 +210,17 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
             }
         }
 
-        // 发光层要先画：它与基础面完全共面，后画的贴图会盖住先画的——基础面不透明的地方就该盖住发光层，
-        // 只有基础面上透明的窗口才露出下面这层光。
+        builder.setTexture(this.face);
+        builder.addCube(x1, y1, z1, x2, y2, z2);
+
+        // 发光层画在基础面**之后**：两面共面，后画的在上。这里必须靠后，因为基础面贴图是全不透明的
+        // （已解出：三档 `*_energy_cell.png` 无 tRNS），先画就什么也看不到；而光贴图大半透明，
+        // 叠上去正好只在它的线网格处发光。AE2 控制器那两个模型反过来（光层在前），是因为它的基础贴图带透明窗。
         builder.setTexture(this.light);
         builder.setEmissiveMaterial(true);
         builder.addCube(x1, y1, z1, x2, y2, z2);
         // 这个 builder 是复用的：不清掉自发光标记，后面画的普通面也会变成满地发光。
         builder.setEmissiveMaterial(false);
-
-        builder.setTexture(this.face);
-        builder.addCube(x1, y1, z1, x2, y2, z2);
 
         return quads;
     }
