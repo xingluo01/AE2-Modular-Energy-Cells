@@ -1371,6 +1371,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     public void onReady() {
         super.onReady();
         onGridConnectableSidesChanged();
+        // 自愈一次成型态：升级前的存档里 formed 还是默认 false；结构在某成员区块卸载期间于别处解散时，
+        // 成员读档后引用还在、状态却是 true。只在「确实是成型结构」时补，避免核心区块未加载时把 true 抹掉。
+        if (isFormed()) {
+            updateFormedState(true);
+        }
     }
 
     /**

@@ -224,7 +224,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         // 未成型：读**方块状态**里的 formed（照 AE2 合成单元：crafting_unit.json 的 formed=false/true 指向两套模型）。
         // 以前这个判定读模型数据，而模型数据在客户端按位置缓存、靠自定义包推—— 漏一环就出现「结构成型了、
         // 方块还是未成型纹理」。方块状态不会有这个问题。
-        if (state == null || !state.getValue(EnergyCellModuleBlock.FORMED)) {
+        if (state == null || !state.getOptionalValue(EnergyCellModuleBlock.FORMED).orElse(false)) {
             builder.setTexture(this.unit);
             builder.addCube(0, 0, 0, OUTER, OUTER, OUTER);
             return quads;
@@ -407,7 +407,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         return EnumSet.noneOf(Direction.class);
     }
 
-    // 光照口径是有意与上游不同的地方：上游合成单元是 AO=false / usesBlockLight=false（它的边框是一圈薄框，
+    // 光照口径是此前有意与上游不同，现已对齐上游的地方：上游合成单元是 AO=false / usesBlockLight=false（它的边框是一圈薄框，
     // 按自己那套发光处理），本模组画的是一整块带内面的立方体，所以按普通方块走 true / true。
     // 实机若发现边框与内面明暗不一致，再按上游改（已记在 docs/TODO.md）。
 
