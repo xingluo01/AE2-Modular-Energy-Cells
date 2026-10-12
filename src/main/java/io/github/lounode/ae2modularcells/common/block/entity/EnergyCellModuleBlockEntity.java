@@ -383,28 +383,35 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /**
-     * 网格接入面：<b>只有核心暴露六个面</b>。
-     *
-     * <p>非核心返回空集，于是它的网格节点没法接进任何网格（节点存在但不参与），等价于「网络节点仅核心注册」。
-     * 核心身份会在结构重算时变化，所以这里每次现算，并在身份变化后调一次
-     * {@code onGridConnectableSidesChanged()} 让父类把结果推给节点。</p>
+     * 网格接入面：<b>六面都允许连接</b>，但结构内部之间与结构外拿到的是不同的节点——见 {@link #getGridNode}。
+     * <p>结构一变就调 {@code onGridConnectableSidesChanged()} 让父类把新的可连接面推给节点。</p>
      */
     @Override
     public java.util.Set<Direction> getGridConnectableSides(appeng.api.orientation.BlockOrientation orientation) {
-        // 六面全开：结构里每一块都可以是玩家接线的那一块。实测反馈「成型的结构无法从任何一个模块连接 ME 网络」
-        // 就是因为这里只对核心开面，而核心是最小角那一块、对玩家不可见——线接在别处永远接不上。
+        // 六面全开：结构里每一块都可以是玩家接线的那一块（实测：「成型的结构无法从任何一个模块连接」）。
+        // 注意这只是「允许连」，真正给出哪个节点由 {@link #getGridNode} 决定——结构内部之间会被那里挡掉。
         return java.util.EnumSet.allOf(Direction.class);
     }
 
     /**
-     * 网格节点的转发：非核心成员把**任何一面**上的连接请求交给核心那个唯一的节点。
+     * 网格接入面的节点来源。两个口径合在一起：
      *
-     * <p>两个约束同时成立：玩家可以从结构任意一块接线（像 AE2 合成单元那样），而网格里始终只有核心一个节点、
-     * 一份存储账目——不会变成「每个方块一个存储」。核心所在区块未加载时退回自己的节点（那属于断引用场景，
-     * 结构本来也不成立）。</p>
+     * <p>① 面朝<b>结构内部</b>（邻块也是结构件）时不透连接。否则核心节点会经成员拿到自己，AE2 建连接时会以
+     * {@code Cannot connect node to itself} 断言失败（那是 IllegalArgumentException，会打断服务端网格重算）。</p>
+     *
+     * <p>② 面朝<b>结构外</b>（线缆等）时把自己那一段唯一的节点交出去：是核心就给自己的，是成员就给核心的。
+     * 于是玩家在任何一块上接线都能连进网络，而网格里始终只有核心一个节点、一份存储账目。</p>
      */
     @Override
     public appeng.api.networking.IGridNode getGridNode(Direction direction) {
+        var level = this.level;
+        if (level == null) {
+            return null;
+        }
+        var neighbour = worldPosition.relative(direction);
+        if (!level.isLoaded(neighbour) || MultiblockScanner.isStructurePart(level.getBlockState(neighbour))) {
+            return null;
+        }
         var core = resolveCore();
         if (core != null && core != this) {
             var coreNode = core.getMainNode().getNode();
@@ -413,6 +420,19 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             }
         }
         return super.getGridNode(direction);
+    }
+
+    /**
+     * 客户端同步走存档那份写入代码。
+     *
+     * <p>AE2 默认的 update tag 只发 {@code writeToStream} 的那几个字段，<b>不包含</b> {@code saveAdditional}
+     * ——而 {@code corePos} / {@code structureOrigin} / 账目全写在那里。不覆写这一条，客户端的 {@code corePos}
+     * 恒为 null，于是 {@code isFormed()} 恒 false（成型结构在客户端永远画未成型外观），{@code lightRatio()}
+     * 也拿不到值。监控器方块实体已经这么做了（同一套写法）。</p>
+     */
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        return saveWithoutMetadata(registries);
     }
 
     /** 我是不是这一段的核心（或未成型的独立元件）。 */
@@ -751,9 +771,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     private void afterStructureReferenceChanged(boolean wasCore) {
         // 模型要重画：成型与否（以及连接位）都在模型数据里，结构一变外观就得跟上。
-        // 不刷新的后果是「拼好了结构，画面仍是未成型那一套」——因为 FILL 档位在空电时不变化，
-        // 拿不到那次方块状态变化顺带把模型数据弄脏。
-        requestModelDataUpdate();
+        // 用 AE2 的 markForClientUpdate（刷模型数据 + 方块更新包）而不是只 requestModelDataUpdate()：
+        // 客户端也得拿到新的核对账目，而不是只把旧数据重画一遍。
+        markForClientUpdate();
         if (wasCore != isCore()) {
             onGridConnectableSidesChanged();
         }

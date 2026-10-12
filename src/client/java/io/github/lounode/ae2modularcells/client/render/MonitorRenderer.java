@@ -95,7 +95,9 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
      * 改一处两边都跟着变。</p>
      */
     private static String compact(long value) {
-        return NumberDisplayMode.LETTERS.format(value);
+        // 跟界面用同一个「当前档位」：玩家在终端里切到科学计数时，监控器上的数字写法也跟着变，
+        // 否则同一个值在方块上和在界面里长得不一样（那正是这一轮修掉的问题）。
+        return NumberDisplayMode.current().format(value);
     }
 
     /** 一行文字加颜色。 */
