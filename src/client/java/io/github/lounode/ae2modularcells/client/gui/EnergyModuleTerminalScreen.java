@@ -158,6 +158,9 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     /** 上一次用过的结构快照；变了才重排。 */
     private String lastSnapshot = "";
 
+    /** 上一次同步给服务端的本地行数；变了才要一次内容重同步（见 updateBeforeRender）。 */
+    private int syncedRows = -1;
+
     private final String[] bandMarks = new String[MAX_ROWS];
 
     /** 已经为哪一份行表要过一次服务端重同步；行表变了就要一次（开屏那次是必须的，见 updateBeforeRender）。 */
@@ -734,12 +737,12 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         // 行表在 applySlotVisibility() 里每次进都先解一遍；绘制/标题/覆盖层/选组四处共用它解出来的结果。
         applySlotVisibility();
 
-        // 行表第一次到手（或变了）时向服务端要一次重同步：开屏那一瞬间服务端刚填完行表，
-        // 而客户端的内容包可能早在「槽还没摆好」时就发出去了——不主动要一次，就会是
-        // 「打开是空的，拖一下滚动条才出现」（拖滚动条之所以能修好，正是因为它走了这条同步）。
-        String layout = getMenu().rowLayout;
-        if (this.layoutReady && !layout.equals(this.resyncedLayout)) {
-            this.resyncedLayout = layout;
+        // 本地行表（重新）排好时向服务端要一次重同步：开屏那一瞬间服务端刚填完窗口，而客户端的槽位
+        // 可能还没摆好——不主动要一次，就会是「打开是空的，拖一下滚动条才出现」（拖滚动条之所以能修好，
+        // 正是因为它走了这条同步）。判据从「服务端行表字符串」改成「本地行表行数」，不再依赖 rowLayout。
+        int localRowCount = this.localRows.size();
+        if (localRowCount != this.syncedRows) {
+            this.syncedRows = localRowCount;
             getMenu().setRowOffset(getMenu().rowOffset);
         }
 
