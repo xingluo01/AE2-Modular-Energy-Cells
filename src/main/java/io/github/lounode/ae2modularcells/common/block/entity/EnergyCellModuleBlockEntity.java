@@ -157,6 +157,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // 网格据此把整段视为「一个多块设备」：整段合成一体，而不是 N 个互不相干的节点。
         // 注意两侧口径的差别是有意的：合成单元只在成型时可连接，而本模组单块独立时也是一台完整的储能元件，
         // 所以 getGridConnectableSides 仍恒开六面（见该方法上方注释）。
+        //
+        // 已确认接受的代价（口径记录）：REQUIRE_CHANNEL 跟着旗标常驻，所以「未成型的散模块」每块自吃 1 条通道，
+        // 成型后整段只算 1 条；AE2 自家储能元件不带任何旗标。此处按「对齐合成单元的通道语义」取舍，
+        // 若后续要改成「散模块不吃通道」，需在做决定的地方（updateFormedState）动态开关旗标，并先确认不会覆盖
+        // 父类原有的旗标集合。
         getMainNode().setFlags(appeng.api.networking.GridFlags.MULTIBLOCK,
                 appeng.api.networking.GridFlags.REQUIRE_CHANNEL)
                 .addService(appeng.api.networking.IGridMultiblock.class, (appeng.api.networking.IGridMultiblock) this::getMultiblockNodes);
