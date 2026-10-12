@@ -181,3 +181,7 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
   - **已就位的前置**：`EnergyCellModuleBlockEntity.lightRatio()`（整段储能占比 0~1，缺数返回 0）与 `faceConnected(Direction)`（只画露在外面的面）已提交（`af1c7aa`）。
   - **注意**：`lightRatio()` 是逐帧可变的，但 baked model 是烘焙期静态的——这正是要分档的原因；别试图在模型里读实时百分比。
 - **不做**：不改 AE2 原版能源元件的行为；不把能量存进每个方块（单一能量池是设计前提）；不在检测里上 tick 轮询。
+- 🔑 **公共前置（已取证，下一步直接用）**：核心的周期钩子 `IGridTickable`（AE2 19.2.18 签名）：
+  `TickingRequest getTickingRequest(IGridNode)`、`TickRateModulation tickingRequest(IGridNode, int ticksSinceLast)`；
+  `TickingRequest(int minTickRate, int maxTickRate, boolean isSleeping)`（另有 `TickingRequest(TickRates, boolean)` 重载）。
+  同一钩子同时是两件事的前置：① 监控器读数推送（核心 tick 里算百分比/流量 → `MonitorBlockEntity#applyReadout` → 变了发包）；② 自发光分档（跨档时更新结构成员的方块状态）。
