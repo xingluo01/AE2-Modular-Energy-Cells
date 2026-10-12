@@ -406,6 +406,8 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             this.moduleTitles.setRow(band, row, band < this.visibleRows);
         }
         this.rowLayout = layout.toString();
+        // 行表定型后重算服务端镜像：这一句是「模块本体能不能同步到客户端」的唯一开关。
+        this.moduleDisplay.refreshServerStacks();
     }
 
     /** 第 {@code titleRowIndex} 条标题行所对应的等级组里有多少个模块（标题后面那行文字要用）。 */
@@ -457,8 +459,26 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
 
         private final ItemStack[] clientMirror = new ItemStack[MAX_MODULE_SLOTS];
 
+        /**
+         * 服务端镜像：窗口里每一格该显示的东西。
+         *
+         * <p>必须**存下来**，不能每次现算。菜单槽位的同步只推「跟上一次不一样」的格子，而现算的值每次调用
+         * 都是新造的 ItemStack，永远翻不出「变了」这个结论——于是客户端镜像一直空着：模块本体不显示，
+         * 屏幕又据「这一列取不到等级」把组件格覆盖层整列跳过，看起来就是「组件槽位置全空、不可交互」。</p>
+         */
+        private final ItemStack[] serverStacks = new ItemStack[MAX_MODULE_SLOTS];
+
         private ModuleDisplayInventory() {
             Arrays.fill(this.clientMirror, ItemStack.EMPTY);
+            Arrays.fill(this.serverStacks, ItemStack.EMPTY);
+        }
+
+        /** 窗口内容变了（滚动、结构变化、开屏）之后重算服务端镜像；同步据此把变化推给客户端。 */
+        private void refreshServerStacks() {
+            for (int slot = 0; slot < MAX_MODULE_SLOTS; slot++) {
+                var module = windowModuleAt(slot);
+                this.serverStacks[slot] = module == null ? ItemStack.EMPTY : labelOf(module);
+            }
         }
 
         @Override
@@ -471,11 +491,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             if (slot < 0 || slot >= MAX_MODULE_SLOTS) {
                 return ItemStack.EMPTY;
             }
-            if (!isServerSide()) {
-                return this.clientMirror[slot];
-            }
-            var module = windowModuleAt(slot);
-            return module == null ? ItemStack.EMPTY : labelOf(module);
+            return isServerSide() ? this.serverStacks[slot] : this.clientMirror[slot];
         }
 
         /** 只读槽：服务端不接受写入，客户端把同步过来的栈收进镜像。 */
