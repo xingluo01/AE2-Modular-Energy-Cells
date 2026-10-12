@@ -3,7 +3,7 @@
   "textures": {
     "particle": "ae2modularcells:block/monitor",
     "front": "ae2modularcells:block/monitor",
-    "base": "ae2modularcells:block/monitor_base"
+    "base": "ae2modularcells:block/unit"
   },
   "elements": [
     {
