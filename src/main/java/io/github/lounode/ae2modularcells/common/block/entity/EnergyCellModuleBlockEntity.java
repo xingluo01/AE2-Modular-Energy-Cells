@@ -389,38 +389,20 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     @Override
     public java.util.Set<Direction> getGridConnectableSides(appeng.api.orientation.BlockOrientation orientation) {
         // 六面全开：结构里每一块都可以是玩家接线的那一块（实测：「成型的结构无法从任何一个模块连接」）。
-        // 注意这只是「允许连」，真正给出哪个节点由 {@link #getGridNode} 决定——结构内部之间会被那里挡掉。
         return java.util.EnumSet.allOf(Direction.class);
     }
 
-    /**
-     * 网格接入面的节点来源。两个口径合在一起：
+    /*
+     * 这里不强求「整段只暴露一个节点」——那是原设计，但它要求玩家把线接在核心（最小角、不可见）那块上。
      *
-     * <p>① 面朝<b>结构内部</b>（邻块也是结构件）时不透连接。否则核心节点会经成员拿到自己，AE2 建连接时会以
-     * {@code Cannot connect node to itself} 断言失败（那是 IllegalArgumentException，会打断服务端网格重算）。</p>
+     * 试过的做法：让成员把核心的节点转发出去（getGridNode 返回核心节点）。它在结构拐角处会撞上 AE2 的
+     * 约束：一个线缆方块同时贴着多块成员时，每一面都拿到同一个核心节点，AE2 只按「方向」去重
+     * （InWorldGridNode），第二次就成了「Connection between node ... already exists」的异常，直接打断服务端
+     * 网格重算。
      *
-     * <p>② 面朝<b>结构外</b>（线缆等）时把自己那一段唯一的节点交出去：是核心就给自己的，是成员就给核心的。
-     * 于是玩家在任何一块上接线都能连进网络，而网格里始终只有核心一个节点、一份存储账目。</p>
+     * 现在的口径：每块各交自己的节点（AE2 合成单元就是这个做法），只在「对外提供储能」上收紧——
+     * 只有核心提供，否则网格里会出现与方块数同规模的存储节点、账目被重复计算（见 afterStructureReferenceChanged）。
      */
-    @Override
-    public appeng.api.networking.IGridNode getGridNode(Direction direction) {
-        var level = this.level;
-        if (level == null) {
-            return null;
-        }
-        var neighbour = worldPosition.relative(direction);
-        if (!level.isLoaded(neighbour) || MultiblockScanner.isStructurePart(level.getBlockState(neighbour))) {
-            return null;
-        }
-        var core = resolveCore();
-        if (core != null && core != this) {
-            var coreNode = core.getMainNode().getNode();
-            if (coreNode != null) {
-                return coreNode;
-            }
-        }
-        return super.getGridNode(direction);
-    }
 
     /**
      * 客户端同步走存档那份写入代码。
@@ -770,6 +752,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * 集合比；调用次数与结构变更次数同量级，不值当为此多存一份状态。</p>
      */
     private void afterStructureReferenceChanged(boolean wasCore) {
+        // 对外是否提供储能：只有核心提供。每块各交自己的节点之后（见 getGridConnectableSides 上方那段），
+        // 若成员也提供储能，网格里就会出现与方块数同规模的存储节点、账目被重复计算。
+        setInternalPublicPowerStorage(isCore());
         // 模型要重画：成型与否（以及连接位）都在模型数据里，结构一变外观就得跟上。
         // 用 AE2 的 markForClientUpdate（刷模型数据 + 方块更新包）而不是只 requestModelDataUpdate()：
         // 客户端也得拿到新的核对账目，而不是只把旧数据重画一遍。
