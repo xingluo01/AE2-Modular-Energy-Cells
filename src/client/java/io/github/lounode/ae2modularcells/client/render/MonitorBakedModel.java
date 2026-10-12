@@ -16,7 +16,6 @@ import net.neoforged.neoforge.client.model.data.ModelData;
 
 import appeng.client.render.cablebus.CubeBuilder;
 
-import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
 
 import org.jetbrains.annotations.Nullable;
@@ -75,7 +74,7 @@ public class MonitorBakedModel implements IDynamicBakedModel {
         builder.setDrawFaces(EnumSet.of(side));
 
         Direction front = state.getValue(MonitorBlock.FACING);
-        boolean formed = state.getOptionalValue(EnergyCellModuleBlock.FORMED).orElse(false);
+        boolean formed = state.getOptionalValue(MonitorBlock.FORMED).orElse(false);
 
         // 统一基础：六面先铺 unit；成型时正面换成基础正面贴图。这样未成型就是一张完整的空白单元。
         builder.setTexture(this.unit);
@@ -101,7 +100,7 @@ public class MonitorBakedModel implements IDynamicBakedModel {
 
     /** 三档覆盖层按整段储能档位选：0 档（空）→ dark，1~3 档 → medium，4 档（满）→ bright。 */
     private TextureAtlasSprite lightFor(BlockState state) {
-        int fill = state.getOptionalValue(EnergyCellModuleBlock.FILL).orElse(0);
+        int fill = state.getOptionalValue(MonitorBlock.FILL).orElse(0);
         if (fill <= 0) {
             return this.lightDark;
         }
@@ -114,7 +113,7 @@ public class MonitorBakedModel implements IDynamicBakedModel {
      * <p>自发光本身不受世界光照影响，这里的系数只调「亮到什么程度」。</p>
      */
     private static float fillIntensity(BlockState state) {
-        int fill = state.getOptionalValue(EnergyCellModuleBlock.FILL).orElse(0);
+        int fill = state.getOptionalValue(MonitorBlock.FILL).orElse(0);
         return 0.45F + 0.55F * (fill / 4.0F);
     }
 
