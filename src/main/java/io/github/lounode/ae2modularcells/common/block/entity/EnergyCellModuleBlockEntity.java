@@ -21,6 +21,10 @@ import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.client.model.data.ModelData;
 
 import appeng.api.config.Actionable;
+import appeng.api.networking.IGridNode;
+import appeng.api.networking.ticking.IGridTickable;
+import appeng.api.networking.ticking.TickRateModulation;
+import appeng.api.networking.ticking.TickingRequest;
 import appeng.api.inventories.InternalInventory;
 import appeng.blockentity.grid.AENetworkedPoweredBlockEntity;
 import appeng.util.inv.AppEngInternalInventory;
@@ -55,7 +59,8 @@ import io.github.lounode.ae2modularcells.common.logic.TerminalRows;
  * <li><b>连接状态是推导值</b>：从世界方块状态现算（{@link #getConnections()}），不持久化、不做增量维护。</li>
  * </ul>
  */
-public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity implements InternalInventoryHost {
+public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
+        implements InternalInventoryHost, IGridTickable {
 
     /** 组件槽里放的东西（§2.2）。尺寸按等级 1 / 2 / 3。 */
     private final AppEngInternalInventory components;
@@ -144,6 +149,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
 
     public EnergyCellModuleBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
+        // 把自己登记成网格的可 tick 服务：AE2 只会 tick 登记过的节点服务，不是实现了接口就算数。
+        // 用它的原因：本模组不给方块实体注册 ticker（红线），周期工作走网格这一条路。
+        getMainNode().addService(IGridTickable.class, this);
         this.tier = requireTier(state);
         // host 不能省：AppEngInternalInventory 只有在有 host 时才会调 saveChangedInventory，
         // 而「方块实体被打上脏标记」就是这么来的。不传 host 时，组件槽里的改动会不会被存档取决于
@@ -535,6 +543,70 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity i
      */
     public boolean faceConnected(Direction direction) {
         return getConnections().contains(direction);
+    }
+
+    // ---- 自发光档位（服务端）----
+
+    /** 档位数：{@code 0~4} 对应 0% / 25% / 50% / 75% / 100% 的发光强度（见 {@code EnergyCellModuleBlock#FILL}）。 */
+    private static final int FILL_LEVELS = 4;
+
+    /** 档位检查周期（tick）：一秒一次。方块状态变化要走网络同步，比这更频繁没有意义。 */
+    private static final int FILL_CHECK_INTERVAL = 20;
+
+    @Override
+    public TickingRequest getTickingRequest(IGridNode node) {
+        return new TickingRequest(FILL_CHECK_INTERVAL, FILL_CHECK_INTERVAL, false);
+    }
+
+    @Override
+    public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLast) {
+        // 只有核心做：整段只有一个账目，比例也是整段共用；其余模块只是被写方块状态的一方。
+        if (isCore()) {
+            updateFillLevels();
+        }
+        return TickRateModulation.SAME;
+    }
+
+    /**
+     * 把整段的储能比例折算成档位，写进每一块结构件的方块状态。
+     *
+     * <p>只写真的变了的那几块：{@code setBlock} 会发网络包，一整段 16³ 的立方体不该每秒重写一遍。
+     * 这一口径与「结构检测不在渲染路径上跑」是同一个思路——贵的操作要有人把关。</p>
+     */
+    private void updateFillLevels() {
+        var level = this.level;
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        int fill = fillLevel(lightRatio());
+        if (this.structureOrigin == null || this.ownStats.side() <= 1) {
+            // 未成型：只有自己这一块，也得跟单块账目一致。
+            applyFill(level, this.worldPosition, fill);
+            return;
+        }
+        var layout = new MultiblockScanner.Layout(this.structureOrigin, this.ownStats.side());
+        var cursor = new BlockPos.MutableBlockPos();
+        int count = layout.moduleCount();
+        for (int index = 0; index < count; index++) {
+            layout.modulePos(index, cursor);
+            applyFill(level, cursor, fill);
+        }
+    }
+
+    /** 比例 → 档位：0% 不发光，其余四舍五入到最近的档。 */
+    private static int fillLevel(float ratio) {
+        return Math.max(0, Math.min(FILL_LEVELS, Math.round(ratio * FILL_LEVELS)));
+    }
+
+    /** 给一块结构件写档位。监控器没有这个属性，会被 {@code hasProperty} 挡下。 */
+    private static void applyFill(Level level, BlockPos pos, int fill) {
+        var state = level.getBlockState(pos);
+        if (!state.hasProperty(EnergyCellModuleBlock.FILL) || state.getValue(EnergyCellModuleBlock.FILL) == fill) {
+            return;
+        }
+        // 纯视觉：不改变任何账目，所以只发客户端，不必让服务端再跑一次邻块更新。
+        level.setBlock(pos, state.setValue(EnergyCellModuleBlock.FILL, fill),
+                net.minecraft.world.level.block.Block.UPDATE_CLIENTS);
     }
 
     // ---- 结构生命周期 ----
