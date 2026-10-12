@@ -124,8 +124,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * <p>同一张表里还有物品模型 {@code <方块 id>#inventory}——它与方块模型<b>共用 id</b>，只靠变体区分。
      * 不过滤掉它的话，物品会拿到这份模型，而这份模型不出无朝向的面（{@code side == null} 返回空），物品会变透明。</p>
      *
-     * <p>替换是按 id 全量匹配：这个方块将来若真的加了别的状态变体（例如「成型换模型」），它们也会被一并换成这份
-     * ——那时要回来按变体过滤。当前只有一个 {@code ""} 变体。</p>
+     * <p>替换是按 id 全量匹配：{@code fill=0..4} 五个状态变体都会被换成这一份——这是刻意的，这份模型自身无状态
+     * （每次 {@code getQuads} 现建 builder，档位从方块状态现读）。资源重载日志里应当是「已替换 15 个」。</p>
      */
     public static void install(ModelEvent.ModifyBakingResult event) {
         Map<ResourceLocation, ConnectedModuleBakedModel> byBlockId = new HashMap<>();
