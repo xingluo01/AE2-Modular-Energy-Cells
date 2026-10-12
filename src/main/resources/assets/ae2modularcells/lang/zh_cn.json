@@ -20,5 +20,6 @@
   "config.jade.plugin_ae2modularcells.module_structure": "能源模块结构",
   "msg.ae2modularcells.no_component_target": "没有可装入或可替换的组件槽",
   "msg.ae2modularcells.component_inserted": "已装入 %s",
-  "msg.ae2modularcells.component_replaced": "已替换为 %s（换下 %s）"
+  "msg.ae2modularcells.component_replaced": "已替换为 %s（换下 %s）",
+  "block.ae2modularcells.blank_energy_unit": "模块化空白能量单元"
 }

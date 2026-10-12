@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "particle": "ae2modularcells:block/unit",
+    "side": "ae2modularcells:block/unit",
+    "top": "ae2modularcells:block/unit_base",
+    "bottom": "ae2modularcells:block/unit_base"
+  }
+}

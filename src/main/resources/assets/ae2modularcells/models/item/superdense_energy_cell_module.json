@@ -1,6 +1,3 @@
 {
-  "parent": "minecraft:block/cube_all",
-  "textures": {
-    "all": "ae2modularcells:block/superdense_energy_cell_module_face"
-  }
+  "parent": "ae2modularcells:block/superdense_energy_cell_module"
 }

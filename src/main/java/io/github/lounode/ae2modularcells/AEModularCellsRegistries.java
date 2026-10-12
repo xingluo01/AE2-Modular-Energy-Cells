@@ -10,6 +10,7 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
@@ -75,8 +76,29 @@ public final class AEModularCellsRegistries {
                         for (var tier : EnergyCellTier.values()) {
                             output.accept(moduleItem(tier).get());
                         }
+                        // 必须写全限定名：本字段的声明在下面，而 Java 不允许静态字段初始化表达式里用简单名「向前引用」
+                        // （编译报「非法前向引用」）；限定名不受该规则限制。
+                        output.accept(AEModularCellsRegistries.BLANK_ENERGY_UNIT_ITEM.get());
                     })
                     .build());
+
+    /**
+     * 模块化空白能量单元：**只做合成中间体**。
+     *
+     * <p>不储能、不成型、不接入 ME 网格（没有方块实体、不挂任何能力）——它是「待加工的一块壳」，拿它去合成
+     * 三档模块。因此这里用原版 {@link Block} 就够，不因为看着像模块就给它接上台账：一旦给它方块实体，玩家就
+     * 会问「为什么这一块拼进去不算数」。</p>
+     *
+     * <p>贴图口径（美术给的 {@code unit.png} + {@code unit_base.png}）：侧面用 {@code unit}、上下用
+     * {@code unit_base}。若美术后来只要单面，把模型换成 {@code cube_all} 指向 {@code unit} 即可。</p>
+     */
+    public static final DeferredBlock<Block> BLANK_ENERGY_UNIT = BLOCKS.register("blank_energy_unit",
+            () -> new Block(BlockBehaviour.Properties.of()
+                    .strength(2.5F, 6.0F)
+                    .requiresCorrectToolForDrops()));
+
+    public static final DeferredItem<BlockItem> BLANK_ENERGY_UNIT_ITEM =
+            ITEMS.registerSimpleBlockItem("blank_energy_unit", BLANK_ENERGY_UNIT);
 
     static {
         for (var tier : EnergyCellTier.values()) {

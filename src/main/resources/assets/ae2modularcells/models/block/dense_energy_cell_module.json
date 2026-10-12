@@ -1,11 +1,11 @@
 {
   "parent": "minecraft:block/cube_all",
   "textures": {
-    "particle": "ae2modularcells:block/dense_energy_cell_module_face",
-    "all": "ae2modularcells:block/dense_energy_cell_module_face",
-    "face": "ae2modularcells:block/dense_energy_cell_module_face",
-    "ring_corner": "ae2modularcells:block/dense_energy_cell_module_ring_corner",
-    "ring_hor": "ae2modularcells:block/dense_energy_cell_module_ring_hor",
-    "ring_ver": "ae2modularcells:block/dense_energy_cell_module_ring_ver"
+    "particle": "ae2modularcells:block/dense_energy_cell",
+    "all": "ae2modularcells:block/dense_energy_cell",
+    "face": "ae2modularcells:block/dense_energy_cell",
+    "ring_corner": "ae2modularcells:block/ring_corner",
+    "ring_hor": "ae2modularcells:block/ring_side_hor",
+    "ring_ver": "ae2modularcells:block/ring_side_ver"
   }
 }
