@@ -608,14 +608,34 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * <p>只写真的变了的那几块：{@code setBlock} 会发网络包，一整段 16³ 的立方体不该每秒重写一遍。
      * 这一口径与「结构检测不在渲染路径上跑」是同一个思路——贵的操作要有人把关。</p>
      */
+    /**
+     * 换档去抖：同一个新档连续出现这么多次采样才真的写方块状态。
+     *
+     * <p>采样周期就是本方法的调用周期（每 20 tick 一次网格 tick），2 次约 2 秒——视觉上够跟手，
+     * 又足以吃掉「比例掠过档边界又回来」这类波动。</p>
+     */
+    private static final int FILL_CHANGE_SAMPLES = 2;
+
+    /** 待确认的新档位；没有待确认时为 -1。 */
+    private int pendingFillLevel = -1;
+
+    /** 待确认档位已连续出现的采样次数。 */
+    private int pendingFillSamples;
+
+    /** 清空待确认状态：换档已认下，或已回到现档。 */
+    private void resetPending() {
+        this.pendingFillLevel = -1;
+        this.pendingFillSamples = 0;
+    }
+
     private void updateFillLevels() {
         var level = this.level;
         if (level == null || level.isClientSide()) {
             return;
         }
         int fill = fillLevel(lightRatio());
-        // 迟滞：比例停在档边界上时，四舍五入会来回跳（0↔1），而每次 setBlock 都会让客户端**重置挖掘进度**
-        // ——表现为「结构成型后怎么挖都挖不掉」。只有确实离线一截（越过相邻边界 1/4 档）才换档。
+        // 换档两道闸：先迟滞（比例停在档边界上时四舍五入会来回跳 0↔1），再去抖（波动只是短暂掠过新档也不换）。
+        // 为什么必须按住：每次写方块状态，客户端都会**重置挖掘进度**——按不住的观感就是「结构成型后怎么挖都挖不掉」。
         // AE2 合成单元没有这个问题：它的方块状态只在换档（升级）时变，不跟着储量实时变。
         int current = getBlockState().getOptionalValue(EnergyCellModuleBlock.FILL).orElse(fill);
         if (fill != current) {
@@ -623,6 +643,20 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             if (Math.abs(lightRatio() - boundary) < 0.06f) {
                 fill = current;
             }
+        }
+        if (fill == current) {
+            resetPending();
+        } else if (fill == this.pendingFillLevel) {
+            // 同一个新档连续出现够次数才认；一次充放电波动不会立刻换档。
+            if (++this.pendingFillSamples >= FILL_CHANGE_SAMPLES) {
+                resetPending();
+            } else {
+                fill = current;
+            }
+        } else {
+            this.pendingFillLevel = fill;
+            this.pendingFillSamples = 1;
+            fill = current;
         }
         if (this.structureOrigin == null || this.ownStats.side() <= 1) {
             // 未成型：只有自己这一块，也得跟单块账目一致。
@@ -645,6 +679,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
 
     /** 给一块结构件写档位。监控器没有这个属性，会被 {@code hasProperty} 挡下。 */
     private static void applyFill(Level level, BlockPos pos, int fill) {
+        // 必须挡住未加载区块：这个 20 tick 的网格 tick 会走遍整段结构，没加载的那部分一读一写就把区块
+        // 同步加载进来（同族事故本仓已有记录：resolveCore 早期版本反复发起区块加载、停在 Saving worlds）。
+        if (!level.isLoaded(pos)) {
+            return;
+        }
         var state = level.getBlockState(pos);
         if (!state.hasProperty(EnergyCellModuleBlock.FILL) || state.getValue(EnergyCellModuleBlock.FILL) == fill) {
             return;
