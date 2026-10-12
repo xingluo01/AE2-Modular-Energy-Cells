@@ -1179,14 +1179,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
                 out.add(module);
             }
         }
-        if (out.size() < count && core.memberCache != null) {
-            // 成员没加载齐（跨区块结构的常态）：**保留上一次完整的视图**。
+        if (out.size() < count) {
+            // 成员没加载齐：**不写缓存**，返回一份临时视图即可。
             //
-            // 不保留的话，这份列表会随区块加载/卸载缩水——后果有两层，都不只是显示问题：
-            // ① Jade 的容器行会「逐渐变化」（同一个结构的槽数在不同时刻不一样）；
-            // ② 导出总线的可插槽位会跟着变少，同一台总线贴同一块方块，有时塞得进、有时说满了。
-            // 结构真变了会被 core 作废缓存（memberCache = null），所以这里复用的永远是「同一段结构」的完整视图。
-            return core.memberCache;
+            // 为什么不能写缓存：走到这里说明缓存本来就是空的（上面 :1171 已对非空缓存早退），所以这里无论如何
+            // 都不该把残缺结果定型下来——一旦定型，它会在结构下一次写入之前一直生效，同一段结构的槽数会因为
+            // 「定型发生在哪一刻」而不同（Jade 容器行、导出总线的可插槽位都读它）。
+            // 下次调用若成员已到齐会重新收集并正常写缓存；跨区块的结构因此收敛到最后一次完整的视图上。
+            return List.copyOf(out);
         }
         core.memberCache = List.copyOf(out);
         return core.memberCache;
