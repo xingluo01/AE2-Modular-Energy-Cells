@@ -595,10 +595,12 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
                     this.localRows.add(new TerminalRows.Row(null, first, count, indices));
                 }
             } else {
-                var ids = snapshot.split(",", -1);
-                var tiers = new EnergyCellTier[ids.length];
-                for (int index = 0; index < ids.length; index++) {
-                    tiers[index] = EnergyCellTier.byId(ids[index]);
+                // 与 buildStructureSnapshot 对应的一字符制：a + 枚举序号，? 表示这一块拿不到等级。
+                var values = EnergyCellTier.values();
+                var tiers = new EnergyCellTier[snapshot.length()];
+                for (int index = 0; index < snapshot.length(); index++) {
+                    int code = snapshot.charAt(index) - 97;
+                    tiers[index] = code >= 0 && code < values.length ? values[code] : null;
                 }
                 TerminalRows.build(tiers.length, index -> tiers[index], this.localRows);
             }

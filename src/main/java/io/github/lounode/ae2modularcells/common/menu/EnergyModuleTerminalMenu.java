@@ -425,14 +425,16 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      */
     private String buildStructureSnapshot() {
         var tiers = this.host.moduleTiersInOrder();
-        var snapshot = new StringBuilder(tiers.length * 8);
-        for (int index = 0; index < tiers.length; index++) {
-            if (index > 0) {
-                snapshot.append(",");
-            }
-            if (tiers[index] != null) {
-                snapshot.append(tiers[index].id());
-            }
+        // **一模块一字符**：等级在枚举里的序号（a + ordinal），拿不到等级的给 ?。
+        //
+        // 长度是硬约束，不是省流量：@GuiSync 的字符串字段走 FriendlyByteBuf.writeUtf，上限 32767 字符，
+        // 而 16³ 结构有 4096 块。早期版本写的是 tier.id()（"basic," / "advanced," 这类），一条 11 字符左右，
+        // 4096 块拼出 45 055 字符 ⇒ 服务端发同步包时抛 EncoderException: String too big，
+        // GUI 直接打不开（客户端随后断线，看起来像「打开 GUI 保存就崩」）。
+        // 一字符制下上界 = 4096 字符，离上限有 8 倍余量。
+        var snapshot = new StringBuilder(tiers.length);
+        for (var tier : tiers) {
+            snapshot.append(tier == null ? (char) 63 : (char) (97 + tier.ordinal()));
         }
         return snapshot.toString();
     }
