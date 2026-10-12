@@ -95,13 +95,23 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      */
     private final TextureAtlasSprite light;
 
+    /**
+     * 发光层的底板贴图（三档共用 {@code energy_cell_light_base}）。
+     *
+     * <p>它是 16×16 <b>全不透明</b>的，所以不能盖在面板上（会把面板糊掉）；它用的是「空电那一格」：
+     * 发光网格在 0 档时整片透明、什么都不画，底板正好补上这个位置的暗态外观。</p>
+     */
+    private final TextureAtlasSprite lightBase;
+
     private ConnectedModuleBakedModel(TextureAtlasSprite face, TextureAtlasSprite ringCorner,
-            TextureAtlasSprite ringHor, TextureAtlasSprite ringVer, TextureAtlasSprite light) {
+            TextureAtlasSprite ringHor, TextureAtlasSprite ringVer, TextureAtlasSprite light,
+            TextureAtlasSprite lightBase) {
         this.face = face;
         this.ringCorner = ringCorner;
         this.ringHor = ringHor;
         this.ringVer = ringVer;
         this.light = light;
+        this.lightBase = lightBase;
     }
 
     /**
@@ -128,7 +138,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             sprite(event, name + "_ring_corner"),
                             sprite(event, name + "_ring_hor"),
                             sprite(event, name + "_ring_ver"),
-                            sprite(event, tier.id() + "_energy_cell_light")));
+                            sprite(event, tier.id() + "_energy_cell_light"),
+                            sprite(event, "energy_cell_light_base")));
         }
 
         int[] replaced = { 0 };
@@ -241,6 +252,11 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
             // 这个 builder 是复用的：颜色与自发光标记都要归位，否则后面画的普通面也会被染色/满地发光。
             builder.setColorRGB(1.0F, 1.0F, 1.0F);
             builder.setEmissiveMaterial(false);
+        } else {
+            // 0 档：发光网格整片透明（那张图的透明部分占大半），什么也不画，光层就等于不存在；
+            // 这一格用底板补上，于是“空电”也有一层可看的外观。
+            builder.setTexture(this.lightBase);
+            builder.addCube(x1, y1, z1, x2, y2, z2);
         }
 
         return quads;
