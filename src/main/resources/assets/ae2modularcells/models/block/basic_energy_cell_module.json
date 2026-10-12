@@ -6,6 +6,7 @@
     "face": "ae2modularcells:block/basic_energy_cell",
     "ring_corner": "ae2modularcells:block/ring_corner",
     "ring_hor": "ae2modularcells:block/ring_side_hor",
-    "ring_ver": "ae2modularcells:block/ring_side_ver"
+    "ring_ver": "ae2modularcells:block/ring_side_ver",
+    "basic_energy_cell_light": "ae2modularcells:block/basic_energy_cell_light"
   }
 }

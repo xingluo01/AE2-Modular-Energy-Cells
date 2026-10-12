@@ -86,12 +86,21 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
     private final TextureAtlasSprite ringHor;
     private final TextureAtlasSprite ringVer;
 
+    /**
+     * 发光层贴图：三档各自的 {@code <tier>_energy_cell_light}。
+     *
+     * <p>发光层与基础面共用同一套几何，差别只在于它不吃世界光照（见 {@code getQuads} 里的
+     * {@code setEmissiveMaterial}）——这是 AE2 控制器那种泛光的做法，不是自写 RenderType。</p>
+     */
+    private final TextureAtlasSprite light;
+
     private ConnectedModuleBakedModel(TextureAtlasSprite face, TextureAtlasSprite ringCorner,
-            TextureAtlasSprite ringHor, TextureAtlasSprite ringVer) {
+            TextureAtlasSprite ringHor, TextureAtlasSprite ringVer, TextureAtlasSprite light) {
         this.face = face;
         this.ringCorner = ringCorner;
         this.ringHor = ringHor;
         this.ringVer = ringVer;
+        this.light = light;
     }
 
     /**
@@ -117,7 +126,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             sprite(event, name + "_face"),
                             sprite(event, name + "_ring_corner"),
                             sprite(event, name + "_ring_hor"),
-                            sprite(event, name + "_ring_ver")));
+                            sprite(event, name + "_ring_ver"),
+                            sprite(event, tier.id() + "_energy_cell_light")));
         }
 
         int[] replaced = { 0 };
@@ -199,6 +209,14 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                 x2 = OUTER;
             }
         }
+
+        // 发光层要先画：它与基础面完全共面，后画的贴图会盖住先画的——基础面不透明的地方就该盖住发光层，
+        // 只有基础面上透明的窗口才露出下面这层光。
+        builder.setTexture(this.light);
+        builder.setEmissiveMaterial(true);
+        builder.addCube(x1, y1, z1, x2, y2, z2);
+        // 这个 builder 是复用的：不清掉自发光标记，后面画的普通面也会变成满地发光。
+        builder.setEmissiveMaterial(false);
 
         builder.setTexture(this.face);
         builder.addCube(x1, y1, z1, x2, y2, z2);
