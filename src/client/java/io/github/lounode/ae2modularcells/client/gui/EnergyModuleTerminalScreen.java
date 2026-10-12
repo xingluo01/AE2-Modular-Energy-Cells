@@ -175,11 +175,8 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     private final Map<SlotSemantic, Boolean> appliedHidden = new HashMap<>();
 
     /** 行表是否已到手。首帧可能先渲染、后收到同步包；那时不能动槽位（见 applySlotVisibility）。 */
-    private boolean layoutReadyApplied;
 
     /** 行表就绪后是否已补过一次槽位可见性重算（只补一次，之后走每帧的增量路径）。 */
-    private boolean visibilityReapplied;
-    private boolean layoutReady;
 
     public EnergyModuleTerminalScreen(EnergyModuleTerminalMenu menu, Inventory playerInventory, Component title,
             ScreenStyle style) {
@@ -317,11 +314,6 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         // 行表每帧只解一次（绘制/标题/覆盖层/选组都读它）；这里先保证它已解——本方法在 init() 里也会被调到，
         // 而那时这一帧的 updateBeforeRender 还没跑过。
         refreshLocalRows();
-        if (!this.layoutReady) {
-            shiftFooterAnchors();
-            return;
-        }
-
         for (int band = 0; band < MAX_ROWS; band++) {
             boolean visible = band < this.bands && !EMPTY_MARK.equals(bandMark(band));
             boolean title = visible && bandIsTitle(band);

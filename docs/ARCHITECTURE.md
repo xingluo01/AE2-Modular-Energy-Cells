@@ -315,3 +315,16 @@
 **改 GUI**：先改 `assets/ae2/screens/ae2modularcells/*.json`，再改屏幕代码，最后跑屏幕自检脚本。控件在代码里必须按 id 注册：文档有键而代码没注册，那块永远不出现。
 
 **动 api**：`api/package-info.java` 写明这个包是稳定面。改签名等于破坏第三方兼容，改之前先在 `../CHANGELOG.md` 记一笔。
+
+## 10. 终端（模块管理终端）
+
+终端是**客户端本地布局**：与 AE2 的样板访问终端（me/patternaccess/PatternAccessTermScreen）同构——行对象列表、客户端排行、Scrollbar 持偏移、样式切换只做客户端重排。三条不变量，动它之前先读：
+
+1. **行表在客户端算**。服务端只下发结构快照：`@GuiSync(74) structureSnapshot`，内容是按 multiblock 遍历序、每模块一个等级短 id、逗号分隔（见 EnergyModuleTerminalMenu#buildStructureSnapshot）。客户端用 EnergyCellTier.byId 解析后交给纯函数 common/logic/TerminalRows 排出整张行表（分组、标题带、每行几个模块）。**别再引入服务端拼好的行表字符串**——那正是两次首帧 bug（开屏空屏、要等一次画面更新）的来源。
+2. **槽内内容由服务端填**。屏幕看到的内容来自 visible/windowModuleAt 与服务端镜像（ModuleDisplayInventory.serverStacks、ModuleTitleInventory）。原版菜单槽同步只推「与上次不同」的格子，所以服务端必须**存一份镜像再算**；按需现算会让同步永远推不出「变了」，客户端就一直是空的（历史事故：模块本体不显示、组件格整列不画）。
+3. **槽位坐标不可改**。坐标写死在 assets/ae2/screens/ae2modularcells/energy_module_terminal.json，运行期只允许改**可见性**（applySlotVisibility / setSlotsHidden）。AE2 的 setSlotsHidden(sem, false) 会触发 positionSlots() 把所有语义拉回文档坐标，任何在客户端写 slot.x/y 的做法都会与它打架。
+
+另外两条踩过的坑：
+
+- **遍历序必须同源**。EnergyCellModuleBlockEntity#moduleTiersInOrder 与 rows() 必须用同一个 MultiblockScanner.Layout 与同一个 tierOfModuleAt。历史事故：快照曾走窗口列表（moduleTierAt → windowModuleAt），随滚动漂移、两端分组错开，会让玩家把组件装到别的模块上。
+- **兜底要「不隐藏」而不是「少显示」**。快照未到的那一帧把带铺满（全是模块带），不要按算出来的行数少排——服务端已经按它自己的行表填了内容，少排会让尾部带被隐藏却仍可写入。

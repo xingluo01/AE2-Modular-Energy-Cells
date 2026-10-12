@@ -136,7 +136,6 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      * <p>名字即协议：屏幕靠它决定每条带贴哪一张图、要不要写标题。状态跟着行表走，不改名字、不复用。</p>
      */
     @GuiSync(70)
-    public String rowLayout = "";
 
     /** 整段出现过哪几档模块（位掩码）；多于一位就是混拼，顶栏据此换文案。 */
     @GuiSync(71)
@@ -415,7 +414,6 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             }
             this.moduleTitles.setRow(band, row, band < this.visibleRows);
         }
-        this.rowLayout = layout.toString();
         // 行表定型后重算服务端镜像：这一句是「模块本体能不能同步到客户端」的唯一开关。
         this.moduleDisplay.refreshServerStacks();
         this.structureSnapshot = buildStructureSnapshot();
