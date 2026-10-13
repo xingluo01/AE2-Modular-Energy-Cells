@@ -216,7 +216,7 @@
 
 ### 5.1 给其他模组的接入面（`api` 包）
 
-其他模组要接入，就是两步：**注册一个等级**，再**注册它配套的方块套装**。
+其他模组要接入，就是两步：**注册一个等级**，再**注册它配套的方块套装**。用法（含脚本那条路）、要自备的资源与失败现象对照表在 [`INTEGRATION.md`](INTEGRATION.md)；本节讲的是这么设计的原因。
 
 ```java
 public static final DeferredRegister<EnergyCellTier> TIERS =
@@ -232,7 +232,7 @@ public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellMo
 
 **全局清单是这一层的关键**（`ModularCellsApi#allModuleBlockSets`）。能力注册与客户端模型替换都要跨模组看「全部模块方块」：
 
-- **能力注册**（`AEModularCellsRegistries#registerCapabilities`）按方块实体类型走一遍清单，给每个套装挂三条：`EnergyStorage.BLOCK`（只进不出的 FE 面）、`ItemHandler.BLOCK`（组件槽的自动化面）、`AECapabilities.IN_WORLD_GRID_NODE_HOST`。最后一条最容易漏——**AE2 只在它自己的类型表上批量注册网格主机能力**（上游 `InitCapabilityProviders` 遍历 `AEBlockEntities.BLOCK_ENTITY_TYPES`），第三方不补就接不上线缆，而且一条报错都没有，只是那一块永远不联网。
+- **能力注册**（`AEModularCellsRegistries#registerCapabilities`）按方块实体类型走一遍清单，给每个套装挂三条：`EnergyStorage.BLOCK`（只进不出的 FE 面）、`ItemHandler.BLOCK`（组件槽的自动化面）、`AECapabilities.IN_WORLD_GRID_NODE_HOST`。最后一条最容易漏——**AE2 只在它自己的类型表上批量注册网格主机能力**（上游 `InitCapabilityProviders` 遍历 `AEBlockEntities.BLOCK_ENTITY_TYPES`），第三方不补就接不上线缆。
 - **客户端模型替换**（`ConnectedModuleBakedModel#install`）也遍历清单、按 `set.block().getId()` 匹配烘焙表。遍历等级表是不行的：第三方可以给自己的方块取别名。
 - **创造页**反过来**只收本模组命名空间**的物品，第三方的方块进他们自己的标签页。
 - 本模组自己的三档走**同一个入口**（`AEModularCellsRegistries` 的 static 块），不给自己留特权路径，否则两条注册路径迟早会分叉。
@@ -244,6 +244,9 @@ public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellMo
 - **方块掉落表**：`data/<你的命名空间>/loot_table/blocks/<方块名>.json`。没有它，方块挖下来**什么都不掉**，
   而且没有任何报错——内置三档有这份文件可以照抄。
 - 语言键 `block.<命名空间>.<方块名>`。
+
+（贴图、模型与语言键只客户端需要，掉落表走服务端数据包。面向接入者的完整版含失败现象对照表，见
+[`INTEGRATION.md`](INTEGRATION.md)。）
 
 **脚本侧（KubeJS）**
 

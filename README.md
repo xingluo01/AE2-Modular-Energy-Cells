@@ -61,5 +61,6 @@ On Windows the same commands ship as `run_client.bat`, `run_client_emi.bat`, `ru
 | --- | --- |
 | [`AGENTS.md`](AGENTS.md) | Entry point for AI agents and newcomers: documentation map and hard rules |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How the code is organized, where things go, what to touch |
+| [`docs/INTEGRATION.md`](docs/INTEGRATION.md) | For add-on and modpack authors: the registration API, the resources you have to supply, and what failures look like |
 | [`docs/TODO.md`](docs/TODO.md) | Implementation order, balance table and open questions |
 | [`CHANGELOG.md`](CHANGELOG.md) | Player-visible changes (writing style: `docs/CHANGELOG_STYLE.md`) |
