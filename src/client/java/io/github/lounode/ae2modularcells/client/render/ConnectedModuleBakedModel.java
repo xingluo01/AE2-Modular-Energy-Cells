@@ -133,7 +133,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * <p>同一张表里还有物品模型 {@code <方块 id>#inventory}——它与方块模型<b>共用 id</b>，只靠变体区分。
      * 不过滤掉它的话，物品会拿到这份模型，而这份模型不出无朝向的面（{@code side == null} 返回空），物品会变透明。</p>
      *
-     * <p>替换是按 id 全量匹配：{@code fill=0..4} 五个状态变体都会被换成这一份——这是刻意的，这份模型自身无状态
+     * <p>替换是按 id 全量匹配：{@code fill=0..4} × {@code formed=false/true} 共十个状态变体都会被换成这一份
+     * ——这是刻意的，这份模型自身无状态
      * （每次 {@code getQuads} 现建 builder，档位从方块状态现读）。计数会把三档模块与两个监控器的状态变体
      * 一起算进去，所以资源重载日志里的数字随方块数变化，不要拿它当固定值对。</p>
      */
@@ -149,11 +150,15 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             // 贴图名必须是**文件路径**（`block/<名>`），不是模型 JSON 里的槽名：
                             // 面板与边框的实际文件名不带 `_module` 后缀，写错会在资源重载时报「没进方块图集」并在游戏里
                             // 显示紫黑格——三档各错四个（face + 三个 ring），正是实测看到的紫黑面板与边框。
-                            sprite(event, tier.id() + "_energy_cell"),
+                            //
+                            // 等级那两张按**方块自己的命名空间**取：第三方（Java 注册或 KubeJS 脚本）把贴图放在自己的
+                            // 命名空间下，这里硬编码本模组会逼所有人往 ae2modularcells 里塞图、不同整合包互相覆盖。
+                            // 另五张是共享件（边框与通用块），只存在于本模组，所以走单参重载。
+                            sprite(event, set.id().getNamespace(), tier.id() + "_energy_cell"),
                             sprite(event, "ring_corner"),
                             sprite(event, "ring_side_hor"),
                             sprite(event, "ring_side_ver"),
-                            sprite(event, tier.id() + "_energy_cell_light"),
+                            sprite(event, set.id().getNamespace(), tier.id() + "_energy_cell_light"),
                             sprite(event, "energy_cell_light_base"),
                             sprite(event, "unit")));
         }
@@ -197,13 +202,6 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
     }
 
     /**
-     * 取图集里的贴图，顺手确认它真的进了图集。
-     *
-     * <p>这份模型的边框贴图不是由任何 {@code elements} 引用的（几何是手写的），所以它们靠
-     * {@code models/block/*.json} 的 {@code textures} 段声明入图集。声明漏了不会报错，只会拿到 missingno
-     * （紫黑格），那比编译器报错难查得多。</p>
-     */
-    /**
      * 发光强度：按储能档位取，0 档（空）不发光 → 4 档（满）满亮。
      *
      * <p>没有状态时（理论上不会发生：{@code side == null} 早就返回了）按 0 档处理，宁可少画一层也不报错。</p>
@@ -215,8 +213,20 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         return state.getOptionalValue(EnergyCellModuleBlock.FILL).orElse(0) / 4.0F;
     }
 
+    /**
+     * 取图集里的贴图，顺手确认它真的进了图集。共享贴图（边框与通用块）一律用本模组的命名空间。
+     *
+     * <p>这份模型的边框贴图不是由任何 {@code elements} 引用的（几何是手写的），所以它们靠
+     * {@code models/block/*.json} 的 {@code textures} 段声明入图集。声明漏了不会报错，只会拿到 missingno
+     * （紫黑格），那比编译器报错难查得多——所以下面按名字反查一次，对不上就告警。</p>
+     */
     private static TextureAtlasSprite sprite(ModelEvent.ModifyBakingResult event, String textureName) {
-        var texture = ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "block/" + textureName);
+        return sprite(event, AE2ModularCells.MOD_ID, textureName);
+    }
+
+    /** 等级自己的两张贴图按传入的命名空间取——方块在哪个命名空间，那两张图就在哪。 */
+    private static TextureAtlasSprite sprite(ModelEvent.ModifyBakingResult event, String namespace, String textureName) {
+        var texture = ResourceLocation.fromNamespaceAndPath(namespace, "block/" + textureName);
         var sprite = event.getTextureGetter().apply(new Material(TextureAtlas.LOCATION_BLOCKS, texture));
         if (!texture.equals(sprite.contents().name())) {
             LOG.warn("贴图 {} 没进方块图集（拿到的是 {}）——检查 models/block/*.json 的 textures 段有没有声明它",

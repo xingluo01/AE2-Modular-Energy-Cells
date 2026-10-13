@@ -1,0 +1,14 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "particle": "kubejs:block/industrial_energy_cell",
+    "all": "kubejs:block/industrial_energy_cell",
+    "face": "kubejs:block/industrial_energy_cell",
+    "ring_corner": "ae2modularcells:block/ring_corner",
+    "ring_hor": "ae2modularcells:block/ring_side_hor",
+    "ring_ver": "ae2modularcells:block/ring_side_ver",
+    "industrial_energy_cell_light": "kubejs:block/industrial_energy_cell_light",
+    "energy_cell_light_base": "ae2modularcells:block/energy_cell_light_base",
+    "unit": "ae2modularcells:block/unit"
+  }
+}

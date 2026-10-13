@@ -93,9 +93,7 @@ StartupEvents.registry('block', event => {
 })
 ```
 
-等级名默认取方块名去掉 `_energy_cell_module` 后缀，可以用 `tierId('...')` 改。等级名与内置三档或别人的等级撞名会撞上 NeoForge 的重复键；两个脚本方块写同一个 `tierId` 则会被本模组拦下来并让你改（见下面的对照表）。
-
-**入口为什么是方块而不是等级**，这件事踩过坑，值得记下来：KubeJS 的落盘只认「当前正在注册的那个注册表」，而 `minecraft:block` 这类原版注册表早于本模组的自建注册表。第一版把入口放在等级上，实测结果是**等级建出来了、方块一个都没有，日志里没有任何错**。改以方块为入口才通——方块最早，物品与方块实体类型都比它晚。等级则由本模组在它自己那一次 `RegisterEvent` 里补注册，脚本侧不用管时序。
+等级名、五个数值的默认值、资源清单与脚本专属的失败现象都在 [`kubejs/README.md`](kubejs/README.md)——本节只留轮廓。入口为什么是方块而不是等级（踩过的时序坑）在 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5.1。
 
 只支持这一种写法。若你见到 `StartupEvents.registry('ae2modularcells:energy_cell_tier', ...)`，那是首版的做法，已作废——那种类型没有对应的 builder，KubeJS 会照它自己的规矩报错。
 
@@ -105,8 +103,8 @@ API 不代管资源，四样都要自己给：
 
 | 文件 | 缺了会怎样 | 哪边要 |
 |---|---|---|
-| `textures/block/<tierId>_energy_cell.png` 与 `<tierId>_energy_cell_light.png` | 紫黑格。连通模型按等级 id 找这两张，名字不对就找不到 | 客户端 |
-| `blockstates/<方块名>.json` 与 `models/block|item/<方块名>.json` | 模型缺失。形状变体是 `fill=0..4`，内置三档那几份可以直接照抄 | 客户端 |
+| `textures/block/<tierId>_energy_cell.png` 与 `<tierId>_energy_cell_light.png` | 紫黑格。连通模型按「**方块自己的命名空间** + 等级名」找这两张 | 客户端 |
+| `blockstates/<方块名>.json` 与 `models/block|item/<方块名>.json` | 模型缺失。形状变体是 `fill=0..4` × `formed=false/true`（十个），内置三档那几份可以直接照抄 | 客户端 |
 | `data/<命名空间>/loot_table/blocks/<方块名>.json` | 挖下来什么都不掉，而且不报错 | 服务端（数据包） |
 | 语言键 `block.<命名空间>.<方块名>` | 显示原始键名 | 客户端 |
 
@@ -118,7 +116,7 @@ API 不代管资源，四样都要自己给：
 |---|---|
 | 方块能放能储能，但接线缆没反应、那一块永远不联网 | 套装没进全局清单，网格主机能力没挂上。**不会报错** |
 | 方块挖了什么都不掉 | 缺掉落表。**不会报错** |
-| 紫黑格 | 贴图文件名与等级 id 对不上 |
+| 紫黑格 | 贴图文件名与等级 id 对不上，或命名空间不对（连通模型按方块所在命名空间找图） |
 | 启动时报 `has no registered block` / `has no registered item` / `has no registered block entity type` | 套装的三件里某一件没进注册表，注册路径没走完 |
 | 启动时 WARN `has no module block set; it will never appear in a structure` | 那个等级没有配套方块。脚本把方块名写错时常见 |
 | 启动时抛 `not in the energy cell tier registry` | 套装引用的等级没注册 |

@@ -1,0 +1,34 @@
+{
+  "variants": {
+    "fill=0,formed=false": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=1,formed=false": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=2,formed=false": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=3,formed=false": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=4,formed=false": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=0,formed=true": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=1,formed=true": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=2,formed=true": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=3,formed=true": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    },
+    "fill=4,formed=true": {
+      "model": "kubejs:block/industrial_energy_cell_module"
+    }
+  }
+}

@@ -20,6 +20,7 @@ AE2（应用能源 2）的附属模组 `ae2modularcells`：模块化能源元件
 | `docs/INTEGRATION.md` | 要让别的模组或整合包脚本接进本模组、或要加一个邻居适配时。接入 API 的用法、要自备的资源、失败现象对照表 |
 | `docs/TODO.md` | 想知道「这事做没做、为什么没做、数值是多少」时：实施顺序、平衡表、待定项 |
 | `docs/CHANGELOG_STYLE.md` | 改 `CHANGELOG.md` 前：格式被发版流程约束，`## [` 是段落边界 |
+| `docs/kubejs/README.md` | 给整合包用脚本加模块等级时。含可抄的完整案例（脚本 + 方块状态 + 模型 + 掉落表） |
 | `CHANGELOG.md` | 发行说明（版本段会被取为发布文案） |
 | `README.md` | 玩法自述（英文，商店页与 GitHub 首页） |
 

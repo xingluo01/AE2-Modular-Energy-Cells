@@ -243,7 +243,7 @@ public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellMo
 **第三方要自备的东西**：
 
 - 贴图两张，按等级 id 命名：`<tierId>_energy_cell`（面板）与 `<tierId>_energy_cell_light`（亮面）。连通模型按等级 id 找它们，名字不匹配的表现是紫黑格。
-- 方块状态与物品模型 JSON：本模组不做数据生成，三档那几份可以照抄（形状变体 `fill=0..4`）。
+- 方块状态与物品模型 JSON：本模组不做数据生成，三档那几份可以照抄（形状变体 `fill=0..4` × `formed=false/true`，共十个）。
 - **方块掉落表**：`data/<你的命名空间>/loot_table/blocks/<方块名>.json`。没有它，方块挖下来**什么都不掉**，
   而且没有任何报错——内置三档有这份文件可以照抄。
 - 语言键 `block.<命名空间>.<方块名>`。
@@ -276,7 +276,7 @@ vanilla 注册表早于本模组的自建注册表（**实测成立，不是契�
 （首版曾以 `StartupEvents.registry('ae2modularcells:energy_cell_tier', ...)` 为入口，因上面的时序问题在实测中作废
 ——若见到那种写法，它不会生效。）
 
-脚本建的套装经 `ModularCellsApi#registerModuleBlockSet` 与 Java 注册的汇进同一张清单，之后的处理完全一样。
+脚本建的套装经 `ModularCellsApi#registerModuleBlockSet` 与 Java 注册的汇进同一张清单，之后的处理完全一样。面向整合包的完整用法、可抄的案例与定档位的数值参照在 [`kubejs/README.md`](kubejs/README.md)。
 
 **边界**：等级与方块套装是**双端都要满足**的注册表——只在服务端注册的等级，客户端解不出那一档（终端里的结构快照按位号配对）。位号因此在两端必须一致，而这靠「两端装了同一批等级」保证，与注册顺序无关（见 §2.1）。
 
