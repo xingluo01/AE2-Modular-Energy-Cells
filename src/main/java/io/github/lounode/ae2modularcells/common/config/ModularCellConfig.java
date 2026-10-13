@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +12,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.serializer.ConfigListOrdering;
 
 import io.github.lounode.ae2modularcells.AE2ModularCells;
 import io.github.lounode.ae2modularcells.common.ComponentGain;
@@ -30,13 +30,14 @@ import io.github.lounode.ae2modularcells.common.ModularCellConstants;
  * 内置识别路径（接口 / 注册名规则表）都是写死在代码里的模组知识；{@code componentGains} 让玩家与整合包
  * 不动代码就能补上任意物品。</p>
  *
- * <p><b>为什么表是字符串列表而不是结构化的表</b>：MezzConfig 的建值 API 是强类型的（内建类型各有一个
- * {@code addXxx}），没有「任意对象数组」这一档。取一个够用的约定语法：
- * {@code <物品 id>=<容量值>:<速率值>}，两个值都可以省略。</p>
+ * <p><b>「额外组件」为什么是自定义类型的列表，而不是字符串列表</b>：元素的类型是
+ * {@link ComponentSpec}，它自带序列化器（{@link ComponentSpecSerializer}）。这样 MezzConfig 的界面
+ * 就能<b>逐行</b>校验并给出具体原因（物品不存在、两个值都是 0 之类），而不是把错误留到运行期静默发生。
+ * 文本形与旧的字符串写法逐字兼容，旧配置文件原样可读。</p>
  *
- * <p><b>写条目的两个坑</b>：① id 要带命名空间（{@code somemod:component}）——不带就会被当成
- * {@code minecraft:component}，匹配不上任何东西；② 两个值都省略会把这个物品「禁用」——它仍被认作组件，
- * 但贡献全为 0，于是遮蔽掉下面两条内置识别。要「不认这个物品」就直接别写它。</p>
+ * <p><b>写条目的两个坑</b>（现在会在界面上直接提示，但仍值得知道）：① id 要带命名空间
+ * （{@code somemod:component}）——不带就会被当成 {@code minecraft:component}；② 两个值都省略会让这个物品
+ * 被「禁用」——它仍被认作组件、贡献全为 0，却会遮蔽掉内置识别。要「不认这个物品」就别写它。</p>
  *
  * <p>配置项的显示名与说明不写在代码里，走语言键
  * {@code ae2modularcells.config.cells.<分类>.<项名>}（见 {@code assets/ae2modularcells/lang/}）。</p>
@@ -53,7 +54,7 @@ public final class ModularCellConfig {
     private static final IConfigValue<Double> TRANSFER_DISCOUNT;
     private static final IConfigValue<Double> TRANSFER_COUNT_BONUS;
     private static final IConfigValue<Double> INPUT_RATIO;
-    private static final IConfigValue<List<String>> COMPONENT_GAINS;
+    private static final IConfigValue<List<ComponentSpec>> COMPONENT_GAINS;
 
     /** 解析好的额外组件表：物品 id → 贡献。配置变化时整表重建；默认空表，空表时识别路径零开销。 */
     private static volatile Map<ResourceLocation, ComponentGain> configuredGains = Map.of();
@@ -81,7 +82,9 @@ public final class ModularCellConfig {
                 .build();
 
         var components = builder.addCategory("components");
-        COMPONENT_GAINS = components.addStringList("componentGains", List.of()).build();
+        COMPONENT_GAINS = components
+                .addList("componentGains", List.of(), ComponentSpecSerializer.INSTANCE, ConfigListOrdering.ORDERED)
+                .build();
 
         SCHEMA = builder.build();
 
@@ -134,18 +137,28 @@ public final class ModularCellConfig {
     }
 
     /**
-     * 重建解析结果：条目是字符串，解析要查注册表，而这表会被识别路径逐槽命中，所以放在变更监听里做，
-     * 不放在读取路径上。
+     * 注册完成后置位。
+     *
+     * <p>在那之前，{@code componentGains} 的条目不做「物品是否存在」的校验——模组物品要到注册事件才进表，
+     * 构造期查什么都是「不存在」，会把合法条目误报。见 {@link ComponentSpecSerializer#markRegistryReady()}。</p>
+     */
+    public static void markRegistryReady() {
+        ComponentSpecSerializer.markRegistryReady();
+    }
+
+    /**
+     * 重建解析结果：元素已经是 {@link ComponentSpec}，这里只把它摊成识别路径要用的两张对照表。
+     *
+     * <p>文本解析与校验在序列化器里做（界面也会用同一条路径），所以这里不再自己拆字符串。</p>
      */
     private static void refresh() {
         Map<ResourceLocation, ComponentGain> parsed = new HashMap<>();
         try {
-            for (String entry : COMPONENT_GAINS.get()) {
-                var parsedEntry = parseEntry(entry);
-                if (parsedEntry == null) {
+            for (ComponentSpec spec : COMPONENT_GAINS.get()) {
+                if (spec == null) {
                     continue;
                 }
-                parsed.put(parsedEntry.id(), parsedEntry.gain());
+                parsed.put(spec.id(), spec.gain());
             }
         } catch (RuntimeException e) {
             // 静态初始化那一次读值可能早于配置加载完成。不能让它把类初始化搞崩——那会升级成
@@ -156,55 +169,5 @@ public final class ModularCellConfig {
         }
         configuredGains = Map.copyOf(parsed);
         LOGGER.info("组件配置：{} 条额外条目已生效", configuredGains.size());
-    }
-
-    /** 解析好的一条配置：物品 id 与它的贡献。 */
-    private record ParsedEntry(ResourceLocation id, ComponentGain gain) {
-    }
-
-    /**
-     * 解析 {@code <物品 id>=<容量值>:<速率值>}；格式不对给 {@code null} 并记一行日志。
-     *
-     * <p>省略度允许：{@code "mod:item"}（两个值都 0，等于没写）、{@code "mod:item=1024"}（只给容量）、
-     * {@code "mod:item=0:64"}（只给速率）。</p>
-     */
-    @Nullable
-    private static ParsedEntry parseEntry(String entry) {
-        if (entry == null || entry.isBlank()) {
-            return null;
-        }
-        String text = entry.trim();
-        int equals = text.indexOf('=');
-        String idText = equals < 0 ? text : text.substring(0, equals).trim();
-        ResourceLocation id = ResourceLocation.tryParse(idText);
-        if (id == null) {
-            LOGGER.warn("组件配置条目「{}」的物品 id 解析不出来，已跳过", entry);
-            return null;
-        }
-        long capacity = 0L;
-        long transfer = 0L;
-        if (equals >= 0) {
-            String[] values = text.substring(equals + 1).trim().split(":", -1);
-            if (values.length > 2) {
-                LOGGER.warn("组件配置条目「{}」的贡献值格式不对（应为 <容量>:<速率>），已跳过", entry);
-                return null;
-            }
-            capacity = parseValue(values[0], entry);
-            transfer = values.length > 1 ? parseValue(values[1], entry) : 0L;
-        }
-        return new ParsedEntry(id, new ComponentGain(capacity, transfer));
-    }
-
-    /** 解析一个数值：空串当 0，解析不出来当 0 并记一行日志。 */
-    private static long parseValue(String text, String entry) {
-        if (text == null || text.isBlank()) {
-            return 0L;
-        }
-        try {
-            return Math.max(0L, Long.parseLong(text.trim()));
-        } catch (NumberFormatException e) {
-            LOGGER.warn("组件配置条目「{}」里的数值「{}」解析不出来，按 0 处理", entry, text);
-            return 0L;
-        }
     }
 }

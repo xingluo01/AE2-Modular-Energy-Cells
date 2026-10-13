@@ -41,5 +41,12 @@
   "ae2modularcells.config.cells.components": "Storage Components",
   "ae2modularcells.config.cells.components.description": "Extra items to treat as storage components, on top of the built-in detection.",
   "ae2modularcells.config.cells.components.componentGains": "Extra Components",
-  "ae2modularcells.config.cells.components.componentGains.description": "Items to treat as storage components. One entry per line, <item id>=<capacity>:<rate>; either value may be omitted. Entries here take priority over built-in detection."
+  "ae2modularcells.config.cells.components.componentGains.description": "Items to treat as storage components, on top of the built-in detection. Entries here take priority over everything else.",
+  "ae2modularcells.config.cells.components.componentGains.syntax": "<item id>=<capacity>:<rate>; either value may be omitted",
+  "ae2modularcells.config.cells.components.componentGains.error.empty": "Empty entry. Delete this line or fill in an item id.",
+  "ae2modularcells.config.cells.components.componentGains.error.badId": "Cannot parse the item id (expected somemod:item - the namespace is required)",
+  "ae2modularcells.config.cells.components.componentGains.error.tooManyValues": "At most two values (capacity first, then rate)",
+  "ae2modularcells.config.cells.components.componentGains.error.badValue": "\"%s\" is not a valid number",
+  "ae2modularcells.config.cells.components.componentGains.warn.unknownItem": "Item %s is not in the registry. Check the spelling, or is that mod installed?",
+  "ae2modularcells.config.cells.components.componentGains.warn.disablesItem": "%s has both capacity and rate at 0: it contributes nothing, and it shadows built-in detection"
 }
