@@ -27,6 +27,7 @@
   "block.ae2modularcells.flow_monitor": "Energy Flow Monitor",
 
   "ae2modularcells.config.cells.coefficients": "Coefficients",
+  "ae2modularcells.config.cells.coefficients.description": "The coefficients used by the two formulas. Changing them changes the capacity and rate of every multiblock.",
   "ae2modularcells.config.cells.coefficients.componentDiscount": "Storage Component Capacity Factor (k)",
   "ae2modularcells.config.cells.coefficients.componentDiscount.description": "Capacity each storage component adds. Per-module capacity is (A + sum S_i x k) x (1 + b x C).",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus": "Capacity Count Bonus (b)",
@@ -38,6 +39,7 @@
   "ae2modularcells.config.cells.coefficients.inputRatio": "Input Ratio (f_in)",
   "ae2modularcells.config.cells.coefficients.inputRatio.description": "Input cap of the whole multiblock = total rate x f_in, then clamped by the sum of the per-block input caps.",
   "ae2modularcells.config.cells.components": "Components",
+  "ae2modularcells.config.cells.components.description": "Extra items to treat as storage components, on top of the built-in detection.",
   "ae2modularcells.config.cells.components.componentGains": "Extra Components",
   "ae2modularcells.config.cells.components.componentGains.description": "Items to treat as storage components. One entry per line, <item id>=<capacity>:<rate>; either value may be omitted. Entries here take priority over built-in detection."
 }

@@ -72,6 +72,7 @@
 ### M8 工程补件 — ⬜ P3
 
 - ✅ 配置项（MezzConfig 托管，服务端归属、游戏内可编辑）：五个系数（k / b / kv / bv / f_in）可调；另有 `componentGains` 额外组件表，按 `<物品 id>=<容量值>:<速率值>` 声明任意物品的贡献，优先级高于内置识别。速率与输入上限（`EnergyCellTier` 的 `V_max` / `V_in_max`）**仍不可配**——它们跟着方块等级走
+- 配置界面的语言键约定（对齐 MezzConfig 自己的键形，别猜）：分类名 = `<langKey>.<分类>`；分类描述 = 同 key 再加 `.description`；值名 = `<langKey>.<分类>.<值>`；值描述 = 同 key 再加 `.description`。`valueValues` / `defaultValue` / 「需要重启」这类**通用标签由 MezzConfig 自带**，mod 侧不用写。**窗口标题是它自动生成的（`<ModId> Configuration`），没有对应键**——`IConfigSchemaBuilder` 上也没有声明名字的 API。缺键时看实机日志里 `ConfigTranslationChecker` 的清单，它会逐字列出要补的键
 - ⬜ `modaccessor` / 访问转换（仅当确需访问 AE2 非公开成员时接入，届时补 `mods_accessor.cfg`）
 - 🔄 开发环境已补 **Applied Generators（应用发电机）**（`maven.modrinth:y1qmWFWM:TW2EMLE6`，需 AE2 + Glodium + AppFlux）：FE 侧电源 + AppFlux 折算，用来堆 10^5 ~ 10^6 AE/t 的稳态负载。**尚未实机压测**——速率的触顶行为与 f_in 折半目前仍停在算术推演
 - ⬜ 发布流程（Modrinth/CurseForge workflow、`icon.png`、`logoFile`）

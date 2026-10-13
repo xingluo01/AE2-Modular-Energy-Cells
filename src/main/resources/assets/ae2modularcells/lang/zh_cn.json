@@ -27,6 +27,7 @@
   "block.ae2modularcells.flow_monitor": "能量流量监控器",
 
   "ae2modularcells.config.cells.coefficients": "公式系数",
+  "ae2modularcells.config.cells.coefficients.description": "两条公式里的系数。改这里会让整段结构的容量与速率跟着变。",
   "ae2modularcells.config.cells.coefficients.componentDiscount": "存储组件容量折扣 k",
   "ae2modularcells.config.cells.coefficients.componentDiscount.description": "每个存储组件贡献的容量。单模块容量 =（A + Σ S_i × k）×（1 + b × C）。",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus": "容量数量加成 b",
@@ -38,6 +39,7 @@
   "ae2modularcells.config.cells.coefficients.inputRatio": "输入比例 f_in",
   "ae2modularcells.config.cells.coefficients.inputRatio.description": "整段输入上限 = 总速率 × f_in，再被各块输入上限之和夹住。",
   "ae2modularcells.config.cells.components": "组件",
+  "ae2modularcells.config.cells.components.description": "在内置识别之外，额外认作存储组件的物品。",
   "ae2modularcells.config.cells.components.componentGains": "额外组件",
   "ae2modularcells.config.cells.components.componentGains.description": "额外认作存储组件的物品。每行一条，语法 <物品 id>=<容量值>:<速率值>，两个值都可以省略。这里写的条目优先于内置识别。"
 }
