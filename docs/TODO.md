@@ -56,8 +56,8 @@
 
 ### M6 槽位与配方 — ⬜ P2
 
-- ✅ 槽位识别：三层优先级——**配置**（`componentGains`，玩家与整合包可声明任意物品）→ **AE2 公开面** `IStorageComponent`（`isStorageComponent` + `getBytes`）→ **内置规则表** `common/BuiltInComponents`（按注册名认没实现接口的邻居）。本模组**不自制**组件物品；`StorageComponentTier` 是规则表的数值来源（待定项 10 的识别口径至此定稿）
-- ✅ **邻居组件的识别口径已用外部证据钉死**（本机没有那些 jar，结论取自上游源码，证据见待定项 10）：MEGA Cells 直接复用 AE2 的 `StorageComponentItem`（`implements IStorageComponent`），走接口路径即可；AppFlux 的 `core_1k ~ core_256m` 与 AE2 OMNI Cells 的三组组件都是普通物品、**不实现**该接口，所以按注册名认——规则表 `common/BuiltInComponents`（只比注册名字符串与前缀，不引邻居类型名，也不写第二份数值）
+- ✅ 槽位识别：**只看配置表**——哪些物品算组件、各贡献多少，全权由 `componentGains` 托管（`StorageComponents#gainOf` → `ModularCellConfig#configuredGains`）。本模组**不自制**组件物品；`common/BuiltInComponents` 只是内置清单，在**服务器启动**时写进配置当初始值，之后以文件为准（待定项 10 的识别口径至此定稿）
+- ✅ **邻居组件的识别口径已用外部证据钉死**（本机没有那些 jar，结论取自上游源码，证据见待定项 10）：MEGA Cells 直接复用 AE2 的 `StorageComponentItem`（`implements IStorageComponent`）、AppFlux 的 `core_1k ~ core_256m` 与 AE2 OMNI Cells 的三组组件是普通物品，两种在**运行时都已不再区分**——内置清单把它们收在同一张表里，写进配置后由配置说话。清单本身仍只比注册名字符串与前缀，不引邻居类型名，也不写第二份数值
 - ⬜ 合成配方：三个等级模块（基础模块「比原版能源元件略贵或相当」）
 - ⬜ 数据生成或手写 JSON（本项目沿用姊妹项目口径：先手写，需要时再接 datagen）
 
@@ -109,7 +109,7 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 | 组件速率折扣 kv（能量存储组件→速率） | 0.0001（**常量，不进配置**） | `ModularCellConstants.TRANSFER_DISCOUNT` |
 | 速率数量加成 bv | 0.1 | `ModularCellConstants.TRANSFER_COUNT_BONUS` → 配置 |
 | 输入比例 f_in | 0.5 | `ModularCellConstants.INPUT_RATIO` → 配置 |
-| 组件档位（规则表的数值来源） | AE2 `1k ~ 256k` / MEGA Cells `cell_component_1m ~ 256m` / AppFlux `core_1k ~ 256m` / OMNI Cells 三组 1k ~ 256m | `StorageComponentTier` |
+| 组件档位（内置清单的数值来源） | AE2 `1k ~ 256k` / MEGA Cells `cell_component_1m ~ 256m` / AppFlux `core_1k ~ 256m` / OMNI Cells 三组 1k ~ 256m | `StorageComponentTier` |
 
 ### 材料量参考（模块方块本身，不含石英/铁/红石/硅与组件）
 

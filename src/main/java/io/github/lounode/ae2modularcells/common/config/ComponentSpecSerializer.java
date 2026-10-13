@@ -7,6 +7,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 
+import io.github.lounode.ae2modularcells.common.ComponentSpec;
+
 /**
  * 「额外组件」条目的序列化器：一行文本 ↔ 一个 {@link ComponentSpec}。
  *
@@ -54,7 +56,6 @@ final class ComponentSpecSerializer implements IConfigValueSerializer<ComponentS
         }
         return spec.id() + "=" + spec.capacity() + ":" + spec.transfer();
     }
-
     @Override
     public IDeserializeResult<ComponentSpec> deserialize(String text) {
         if (text == null || text.isBlank()) {
@@ -69,6 +70,7 @@ final class ComponentSpecSerializer implements IConfigValueSerializer<ComponentS
             return IDeserializeResult.failure(localize(KEY + ".error.badId"));
         }
 
+        // 只写 id 与不写值一样：两个值都当 0。组件表是唯一权威，值只能从文件里来，不再回落到别的识别路径。
         long capacity = 0L;
         long transfer = 0L;
         if (equals >= 0) {

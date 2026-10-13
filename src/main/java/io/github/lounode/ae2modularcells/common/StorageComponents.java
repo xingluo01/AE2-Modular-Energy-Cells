@@ -6,31 +6,23 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
-import appeng.api.implementations.items.IStorageComponent;
-
 import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
 
 /**
  * 存储组件识别与取值的唯一入口。
  *
  * <p>槽位收的是「现成的存储组件」——AE2 的 {@code 1k ~ 256k}、MEGA Cells 的 {@code 1m ~ 256m}、AppFlux 的
- * {@code core_1k ~ 256m}、AE2 OMNI Cells 的 {@code *_omni_cell_component_*}，本模组不自制组件物品。识别按
- * 优先级三层：</p>
+ * {@code core_1k ~ 256m}、AE2 OMNI Cells 的 {@code *_omni_cell_component_*}，本模组不自制组件物品。</p>
  *
- * <ul>
- * <li><b>配置</b>：玩家或整合包在 {@code componentGains} 里声明的条目，优先级最高
- * （见 {@link ModularCellConfig}）——它要能覆盖下面两条内置识别的结果。</li>
- * <li><b>接口路径</b>：AE2 本体与 MEGA Cells 的组件都实现了 AE2 的公开接口 {@link IStorageComponent}，
- * 只要那个物品实现了它，就认；值取 {@code getBytes(stack)}，这一路只贡献容量。</li>
- * <li><b>名字路径</b>：拿不到接口的邻居，按注册名查 {@link BuiltInComponents} 的规则表（AppFlux 只贡献速率、
- * OMNI Cells 只贡献容量），数值取自 {@link StorageComponentTier} 那张档位表。</li>
- * </ul>
+ * <p><b>识别只看配置表</b>：哪些物品算组件、各贡献多少，全权由 {@code componentGains} 托管
+ * （见 {@link ModularCellConfig}）。代码侧的 {@link BuiltInComponents} 只是「内置清单」——它在注册完成后
+ * 被写进配置当初始值，之后以文件内容为准，改它不会影响已有存档。</p>
  *
- * <p>三条路都产出 {@link ComponentGain}：现有各条路只给一个维度，但类型上允许两个维度同时有值——第三方的
- * 「全能」组件（两样都给）接进来时不必再改公式。</p>
+ * <p>取舍：组件表因此完全可见可改（整合包想怎么调就怎么调），代价是与上游脱节——邻居加了档、或改了字节数，
+ * 本模组不会自己跟；要跟就改配置里那一行。新装的邻居模组靠「注册时把内置清单里配置还没有的条目补进去」接入。</p>
  *
- * <p>为什么接口那一路不用一份自己的「物品 → 数值」映射表：那张表一写就与上游脱节——邻居加了档、改了数值，
- * 本模组还按旧表算。名字路径只用于「确实拿不到接口」的邻居。</p>
+ * <p>条目产出 {@link ComponentGain}：两个维度可以同时有值——第三方的「全能」组件（两样都给）接进来时
+ * 不必再改公式。</p>
  */
 public final class StorageComponents {
 
@@ -48,24 +40,11 @@ public final class StorageComponents {
         if (stack.isEmpty()) {
             return null;
         }
-        // 配置路径：玩家或整合包声明的额外组件，优先级最高——要能覆盖下面两条内置识别的结果。
-        // 默认是空表，所以没配过时这一段不花代价。
-        var configured = ModularCellConfig.configuredGains();
-        if (!configured.isEmpty()) {
-            // getKey 可能给 null（未注册的物品），而配置表是不可变 Map、get(null) 会抛，所以先判。
-            ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-            var declared = id == null ? null : configured.get(id);
-            if (declared != null) {
-                return declared;
-            }
-        }
-        // 接口路径：AE2 本体与 MEGA Cells 的 cell_component_*（都实现了这个接口），只贡献容量。
-        if (stack.getItem() instanceof IStorageComponent component && component.isStorageComponent(stack)) {
-            long bytes = Math.max(0L, component.getBytes(stack));
-            return bytes > 0L ? new ComponentGain(bytes, 0L) : null;
-        }
-        // 名字路径：拿不到接口的邻居（AppFlux / OMNI Cells 等），按注册名查规则表。
-        return BuiltInComponents.gainOf(stack);
+        // 组件表由配置全权托管：哪些物品算组件、各给多少值，只认配置文件里的条目。
+        // 代码侧的内置清单只在初始化时写进配置当初始值（见 BuiltInComponents），不参与运行时识别。
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        // getKey 可能给 null（未注册的物品），而配置表是不可变 Map、get(null) 会抛，所以先判。
+        return id == null ? null : ModularCellConfig.configuredGains().get(id);
     }
 
     /** 这个物品能不能插进组件槽。 */

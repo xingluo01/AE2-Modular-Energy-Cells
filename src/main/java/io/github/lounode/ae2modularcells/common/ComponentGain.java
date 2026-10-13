@@ -3,8 +3,7 @@ package io.github.lounode.ae2modularcells.common;
 /**
  * 一个存储组件为增益算法提供的贡献：容量值与传输速率值。
  *
- * <p><b>两个维度可以同时大于 0</b>。早先的口径是「容量组件」与「能量存储组件」互斥——一个物品只走一条公式
- * （容量看实现 AE2 {@code IStorageComponent} 的物品，速率只看 AppFlux 的 {@code core_*}）。第三方的「全能」
+ * <p><b>两个维度可以同时大于 0</b>。早先的口径是两类组件互斥——一个物品只走一条公式。第三方的「全能」
  * 组件可能两样都给，所以贡献改成一个二元组：{@code 0} 表示这一维不参与。</p>
  *
  * <p>数值口径与两条公式一致：{@code capacity} 是组件自己的容量值（AE2 口径的字节），{@code transfer} 是速率
@@ -15,9 +14,6 @@ package io.github.lounode.ae2modularcells.common;
  * @param transfer 速率值（速率侧公式的 {@code Sv_i}）；{@code 0} 表示不参与速率
  */
 public record ComponentGain(long capacity, long transfer) {
-
-    /** 识别出来了但两个维度都不贡献。 */ 
-    public static final ComponentGain NONE = new ComponentGain(0L, 0L);
 
     public ComponentGain {
         // 负值一律当 0：数值来自物品（后续还会来自配置），坏数据只应「不参与计算」，不该把汇总算歪。

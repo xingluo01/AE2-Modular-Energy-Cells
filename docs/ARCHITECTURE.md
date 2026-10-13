@@ -25,7 +25,7 @@
 
 ### 包地图
 
-> 现状：`common.block`（`EnergyCellModuleBlock`）、`common.block.entity`（模块方块实体、能量池与连接状态数据键）、`common.logic`（`MultiblockScanner` / `StructureStats` / `CellMath`）、`common.menu`（管理终端菜单与槽位语义）已落地；`common` 根包还有组件识别（`StorageComponents` 的三层入口、`BuiltInComponents` 规则表、`ComponentGain` / `StorageComponentTier` 数值）与 `common.config`（`ModularCellConfig`）；`integration/ae2` 是 Jade 浮层（走 AE2 的 igtooltip SPI）。`common.energy` 仍是空的——能量池与 `IAEPowerStorage` 实现在 `common.block.entity`（方块实体继承 AE2 的 `AENetworkedPoweredBlockEntity`）。`api` 只有 `package-info`——对外稳定面要等结构查询接口定下来再写。客户端的连接渲染与屏幕在 `client` 源集的 `client/render` 与 `client/gui`。
+> 现状：`common.block`（`EnergyCellModuleBlock`）、`common.block.entity`（模块方块实体、能量池与连接状态数据键）、`common.logic`（`MultiblockScanner` / `StructureStats` / `CellMath`）、`common.menu`（管理终端菜单与槽位语义）已落地；`common` 根包还有组件识别（`StorageComponents`）、内置清单（`BuiltInComponents`）、`ComponentGain` / `ComponentSpec` / `StorageComponentTier` 数值与 `common.config`（`ModularCellConfig`）；`integration/ae2` 是 Jade 浮层（走 AE2 的 igtooltip SPI）。`common.energy` 仍是空的——能量池与 `IAEPowerStorage` 实现在 `common.block.entity`（方块实体继承 AE2 的 `AENetworkedPoweredBlockEntity`）。`api` 只有 `package-info`——对外稳定面要等结构查询接口定下来再写。客户端的连接渲染与屏幕在 `client` 源集的 `client/render` 与 `client/gui`。
 
 | 包 | 职责 |
 |---|---|
@@ -67,7 +67,7 @@
 
 ### 2.2 模块方块与组件槽
 
-- 每个方块自带 **1 / 2 / 3 个组件槽**（按等级），槽里插的是**现成的组件**，本模组不自制组件物品。识别入口在 `common/StorageComponents`（`gainOf` / `magnitudeOf`），按优先级三层：配置（`componentGains`）→ AE2 公开接口 `IStorageComponent` → 内置规则表 `common/BuiltInComponents`。一个组件可以同时给两个维度（`ComponentGain`），现有来源各只给一个：**存储组件**（AE2 的 `1k ~ 256k`、MEGA Cells 的 `cell_component_1m ~ 256m`、OMNI Cells 的三组）给**容量**；**能量存储组件**（AppFlux 的 `core_1k ~ 256m`）给**速率**。
+- 每个方块自带 **1 / 2 / 3 个组件槽**（按等级），槽里插的是**现成的组件**，本模组不自制组件物品。识别入口在 `common/StorageComponents`（`gainOf` / `magnitudeOf`），而它**只看配置表**——哪些物品算组件、各贡献多少，全权由 `componentGains` 托管；代码侧的 `common/BuiltInComponents` 只是内置清单，在注册完成时写进配置当初始值，不参与运行时识别。一个组件可以同时给两个维度（`ComponentGain`），内置清单里各来源各只给一个：**存储组件**（AE2 的 `1k ~ 256k`、MEGA Cells 的 `cell_component_1m ~ 256m`、OMNI Cells 的三组）给**容量**；**能量存储组件**（AppFlux 的 `core_1k ~ 256m`）给**速率**。
 - 组件同时影响容量与速率，折扣不同：容量侧 `S_i × k`（k = 0.2），速率侧 `Svi × kv`（kv = 0.0001）。
 - 插满还有数量加成：容量乘 `(1 + b × C)`（b = 2.0，故三级最多 ×3 / ×5 / ×7），速率乘 `(1 + bv × C)`（bv = 0.1）。`C` 是**这一块实际插了几个组件**（不是两侧各数一次）。
 - 两条公式的**唯一实现**在 `common/logic/CellMath.java`。系数分两类：k / kv 乘的是组件自己带来的值，属组件常量，只在 `common/ModularCellConstants.java` 定义、**不进配置**；b / bv / f_in 描述结构规模与输入口径，可配，默认值在同处，运行时取值来自 `common/config/ModularCellConfig`（MezzConfig 托管，服务端归属、由服务端下发给客户端，游戏内可编辑）——实现阶段别在方块实体或菜单里再写一遍算式。游戏内那个编辑界面来自配套的 **MezzConfig GUI**（独立的客户端 mod `mezz_config_gui`，本项目只在开发环境装着）；配置文件本身由 MezzConfig 管，落点在存档侧，路径可在 GUI 里看到（它不再走 `config/` 目录）。
@@ -204,11 +204,11 @@
 | JEI / EMI | 可选，客户端 | 配方查看（三个等级的合成表）与将来的配方转移入口 |
 | Jade | 可选，客户端 | 显示结构等级、尺寸、当前/总容量（M7） |
 
-存储组件的识别按优先级三层（全在 `common/StorageComponents`）：**配置**（`componentGains`，玩家与整合包能覆盖前两层的结果）→ **AE2 公开接口** `IStorageComponent`（`isStorageComponent` + `getBytes`）→ **内置规则表**（`common/BuiltInComponents`：按 `命名空间 + 路径前缀` 认那些没实现接口的邻居，后缀查 `StorageComponentTier` 取数值）。
+存储组件的识别**只看配置表**（`common/StorageComponents#gainOf` → `ModularCellConfig#configuredGains`）：哪些物品算组件、各贡献多少，全权由 `componentGains` 托管。代码侧的 `common/BuiltInComponents` 只是**内置清单**（AE2 只 k 系、MEGA 只 m 系，加上按注册名的 AppFlux / OMNI 条目），在服务器启动时写进配置当初始值，之后不再参与识别。
 
-所以：实现接口的邻居（AE2 本体、MEGA Cells）**不需要**本模组写适配，也不必按 mod id 门禁；没实现接口的（AppFlux、OMNI Cells）走规则表，**新增一个这样的邻居要往表里加一条**（三行以内）；玩家遇到没人支持过的组件，用配置声明即可，不必等发版。`integration/` 留给真正必须引用邻居类型的东西（Jade 浮层之类）。
+所以：新增一个邻居就是往 `BuiltInComponents` 的清单里加一条——它会在下次启动时被自动补入（服务器启动那一步把清单里「配置还没有的」写进文件），不必手动改存档。取舍是彻底的可见可改换来与上游脱节：邻居改了字节数我们不会自己跟。`integration/` 留给真正必须引用邻居类型的东西（Jade 浮层之类）。
 
-`StorageComponentTier` 是规则表的**数值来源**——它是识别依据的一部分，不是「只给人看」的对照表。而手势判「更低档 / 同档另一种」比的是组件数值本身（`ComponentGain#magnitude`），不是那张表的序号，所以配置里新增的组件也能参与手势。
+`StorageComponentTier` 是清单的**数值来源**（改它只影响往后新写的初始值）。而手势判「更低档 / 同档另一种」比的是组件数值本身（`ComponentGain#magnitude`），不是那张表的序号，所以配置里新增的组件也能参与手势。
 
 ---
 

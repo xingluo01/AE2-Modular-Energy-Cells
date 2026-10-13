@@ -1,27 +1,29 @@
 package io.github.lounode.ae2modularcells.common;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import org.jetbrains.annotations.Nullable;
-
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 
 /**
- * 内置的「按注册名认组件」规则表。
+ * 内置组件目录：本模组「认识哪些组件」这份知识的落点，也是配置初始值的来源。
  *
- * <p>AE2 本体与 MEGA Cells 的组件实现了 AE2 的公开接口，识别走接口就够（见 {@link StorageComponents}）。
- * 但有些邻居的组件就是普通物品——它们没实现那个接口，只能按注册名认。这张表就是那些「模组知识」的落点：
- * 一条规则 = 命名空间 + 路径前缀 + 贡献到哪个维度，数值本身仍然只查 {@link StorageComponentTier} 那张档位表
- * （本类里不写第二份数字）。</p>
+ * <p><b>它不参与运行时识别</b>：识别只看配置表（见 {@link StorageComponents}），这里的作用是在
+ * {@code FMLCommonSetupEvent} 那一步把清单写进配置——写成一次性的初始值。写完之后，哪个组件给多少值
+ * 就完全以配置文件为准，改本类不会再影响已有存档。</p>
  *
- * <p><b>为什么不引邻居的类型名</b>：整张表只比较 {@code namespace:path} 字符串，不 import 任何邻居的类。
+ * <p>清单分两类来源：
+ * <ul>
+ *   <li><b>接口路径</b>（AE2 本体、MEGA Cells）：它们的组件实现了 AE2 的公开接口，但 id 形制规整，
+ *       直接列出来即可。注意 AE2 只出 k 系（{@code 1k} ~ {@code 256k}）、MEGA 只出 m 系
+ *       （{@code 1m} ~ {@code 256m}），不分的话会生成 {@code ae2:cell_component_1m} 这种不存在的物品。</li>
+ *   <li><b>名字路径</b>（{@link #RULES} 里的邻居）：那些组件是普通物品、没实现接口，只能按注册名认。</li>
+ * </ul>
+ * 数值全部取自 {@link StorageComponentTier}，本类不写第二份数字。</p>
+ *
+ * <p><b>为什么不引邻居的类型名</b>：整张表只拿来拼 {@code namespace:path} 字符串，不 import 任何邻居的类。
  * 这是 {@code integration/<邻居>} 那条红线的同一口径——一旦把邻居的类名写进总是加载的类，邻居缺席时会在
- * 加载阶段炸。于是本类不需要门禁、不需要 {@code compileOnly} 依赖，邻居缺席时它只是永远匹配不上。</p>
- *
- * <p>新邻居按注册名接入时，在这里加一条；数值能对上内置档位就直接查表，对不上（或需要同时给两个维度）的
- * 才考虑在配置里逐物品声明，见 {@code common.config.ModularCellConfig}。</p>
+ * 加载阶段炸。邻居缺席时，它的条目只是永远不会被用上。</p>
  */
 public final class BuiltInComponents {
 
@@ -65,38 +67,49 @@ public final class BuiltInComponents {
     }
 
     /**
-     * 按注册名折算这件物品的贡献；没有规则命中给 {@code null}。
+     * 接口路径提供的组件的来源：命名空间，以及该模组的组件只覆盖哪一类档位。
      *
-     * <p>命中要求「命名空间一致 + 路径以某前缀开头 + 剩下的后缀能对上档位」。前缀对上而后缀对不上时继续试
-     * 下一条前缀（例如 {@code omni_cell_component_} 与 {@code complex_omni_cell_component_} 的先后无关）。</p>
+     * <p>AE2 本体只有 k 系（{@code 1k} ~ {@code 256k}），MEGA Cells 只有 m 系（{@code 1m} ~ {@code 256m}）；
+     * 不分的话会生成 {@code ae2:cell_component_1m} 这种不存在的物品。</p>
      */
-    @Nullable
-    public static ComponentGain gainOf(ItemStack stack) {
-        if (stack.isEmpty()) {
-            return null;
+    private record InterfaceSource(String namespace, String tierSuffix) {
+    }
+
+    private static final List<InterfaceSource> INTERFACE_SOURCES = List.of(
+            new InterfaceSource("ae2", "k"),
+            new InterfaceSource("megacells", "m"));
+
+    /** 接口路径组件的路径前缀，与档位 id 拼成完整路径。 */
+    private static final String INTERFACE_PREFIX = "cell_component_";
+
+    /**
+     * 内置支持的组件的完整清单，带值——配置的初始值就是它。
+     *
+     * <p>顺序：接口路径的两个模组在前，然后按 {@link #RULES} 的顺序（AppFlux → OMNI）。</p>
+     */
+    public static List<ComponentSpec> catalog() {
+        List<ComponentSpec> all = new ArrayList<>();
+        for (var source : INTERFACE_SOURCES) {
+            for (var tier : StorageComponentTier.values()) {
+                if (!tier.id().endsWith(source.tierSuffix())) {
+                    continue;
+                }
+                all.add(new ComponentSpec(
+                        ResourceLocation.fromNamespaceAndPath(source.namespace(), INTERFACE_PREFIX + tier.id()),
+                        tier.capacity(), 0L));
+            }
         }
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        if (id == null) {
-            return null;
-        }
-        String path = id.getPath();
         for (var rule : RULES) {
-            if (!rule.namespace().equals(id.getNamespace())) {
-                continue;
-            }
+            boolean capacitySide = rule.channel() == Channel.CAPACITY;
             for (String prefix : rule.prefixes()) {
-                if (!path.startsWith(prefix)) {
-                    continue;
+                for (var tier : StorageComponentTier.values()) {
+                    all.add(new ComponentSpec(
+                            ResourceLocation.fromNamespaceAndPath(rule.namespace(), prefix + tier.id()),
+                            capacitySide ? tier.capacity() : 0L,
+                            capacitySide ? 0L : tier.capacity()));
                 }
-                var tier = StorageComponentTier.byId(path.substring(prefix.length()));
-                if (tier == null) {
-                    continue;
-                }
-                return rule.channel() == Channel.CAPACITY
-                        ? new ComponentGain(tier.capacity(), 0L)
-                        : new ComponentGain(0L, tier.capacity());
             }
         }
-        return null;
+        return List.copyOf(all);
     }
 }

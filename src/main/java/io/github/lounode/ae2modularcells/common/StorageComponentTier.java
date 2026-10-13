@@ -3,14 +3,14 @@ package io.github.lounode.ae2modularcells.common;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 内置档位数值表：一组「后缀 → 组件值」的对照，供按注册名认组件的规则使用（见 {@link BuiltInComponents}）。
+ * 内置档位数值表：一组「后缀 → 组件值」的对照，供 {@link BuiltInComponents} 生成内置清单使用。
  *
  * <p>槽位里放的不是本模组自制的东西，而是现成的存储组件：{@code 1k} ~ {@code 256k} 来自 AE2 本体、
  * {@code 1m} ~ {@code 256m} 来自 MEGA Cells，AppFlux 的 {@code core_1k ~ core_256m} 与 AE2 OMNI Cells 的
  * 组件也用同一套后缀。每一档的 {@link #capacity()} 就是那个组件本身的值：容量侧按 {@code k} 折扣、速率侧按
  * {@code kv} 折扣计入模块公式，见 {@link io.github.lounode.ae2modularcells.common.logic.CellMath}。</p>
  *
- * <p>数值只此一处：识别路径（规则表、配置）都不写第二份数字，改了这张表，各条路径一起跟着变。</p>
+ * <p>数值只此一处：内置清单不写第二份数字（它在运行时也不参与识别——识别只看配置表）。</p>
  *
  * <p><b>它不再是「档位标尺」</b>：手势判「更低档 / 同档另一种」比的是组件数值本身
  * （{@link ComponentGain#magnitude()}），不是这里的枚举序号——配置里新增的组件、或将来某个模组自己的档位
@@ -64,24 +64,5 @@ public enum StorageComponentTier {
     /** 该档存储组件的容量值（AE）：容量侧乘 {@code k}、速率侧乘 {@code kv} 计入模块公式。 */
     public long capacity() {
         return capacity;
-    }
-
-    /**
-     * 按短 id 找档位；找不到返回 {@code null}。
-     *
-     * <p>存档里出现陌生档位（模组版本回退、存档来自别的分支）时用它兜底——调用方按「这个组件不参与
-     * 计算」处理即可，不要抛异常：一件物品的问题不该放大成整段结构的加载失败。</p>
-     */
-    @Nullable
-    public static StorageComponentTier byId(@Nullable String id) {
-        if (id == null || id.isEmpty()) {
-            return null;
-        }
-        for (var tier : values()) {
-            if (tier.id.equals(id)) {
-                return tier;
-            }
-        }
-        return null;
     }
 }

@@ -1,8 +1,11 @@
 package io.github.lounode.ae2modularcells.common.config;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +18,9 @@ import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.serializer.ConfigListOrdering;
 
 import io.github.lounode.ae2modularcells.AE2ModularCells;
+import io.github.lounode.ae2modularcells.common.BuiltInComponents;
 import io.github.lounode.ae2modularcells.common.ComponentGain;
+import io.github.lounode.ae2modularcells.common.ComponentSpec;
 import io.github.lounode.ae2modularcells.common.ModularCellConstants;
 
 /**
@@ -78,15 +83,21 @@ public final class ModularCellConfig {
                 .build();
 
         var components = builder.addCategory("components");
+        // 默认值就是内置支持的组件清单（编号见 BuiltInComponents.catalog）：
+        // 配置界面里能直接看到「内置认识哪些组件」，也能逐条改。这一步把内置清单固化成配置里的值，
+        // 代价是上游日后改了字节数我们不再跟随——要跟随就把那一行改掉。
         COMPONENT_GAINS = components
-                .addList("componentGains", List.of(), ComponentSpecSerializer.INSTANCE, ConfigListOrdering.ORDERED)
+                .addList("componentGains", BuiltInComponents.catalog(), ComponentSpecSerializer.INSTANCE,
+                        ConfigListOrdering.ORDERED)
                 .build();
 
         SCHEMA = builder.build();
 
-        // 值的变更走监听；启动那一次不算「变更」，所以手动解析一遍。
+        // 这里**不主动解析一次**：构造期配置还没加载（SERVER 归属是 per-world 文件），读值会抛。
+        // 变更一律 refresh，不做门控——联机客户端不会走到 ServerStartedEvent（那是服务端的），但它会收到
+        // 服务端下发的值；丢弃的话客户端会把一切组件都判成「不是组件」（槽位校验在客户端也跑）。
+        // refresh() 自带兑底，构造期那一次即使抛也只是降级。
         COMPONENT_GAINS.addListener(change -> refresh());
-        refresh();
     }
 
     private ModularCellConfig() {
@@ -133,13 +144,69 @@ public final class ModularCellConfig {
     }
 
     /**
-     * 注册完成后置位。
+     * 服务器启动：此时配置才真的可读。
      *
-     * <p>在那之前，{@code componentGains} 的条目不做「物品是否存在」的校验——模组物品要到注册事件才进表，
-     * 构造期查什么都是「不存在」，会把合法条目误报。见 {@link ComponentSpecSerializer#markRegistryReady()}。</p>
+     * <p>顺序上先补入内置清单、再解析——补入会写回文件，不先做那一步的话，下面 refresh 读到的是还没有
+     * 内置条目的旧列表（已有存档里那份就是空表）。</p>
+     *
+     * <p>为什么不用 {@code FMLCommonSetupEvent}：配置是 SERVER 归属、挂在世界目录下，那一刻还没加载。
+     * 实测那里读值会抛异常，被下面的兜底接住——症状是「日志说 50 条、而配置文件里是空的」，
+     * 内置清单永远写不进去，用户对文件的修改也在本会话内被忽略。</p>
      */
-    public static void markRegistryReady() {
+    public static void onServerStarted() {
         ComponentSpecSerializer.markRegistryReady();
+        ensureCatalogPresent();
+        // 无论有没有补入都重读一次：兜底分支填的只是运行时表，不重读的话用户对文件的修改在本会话内不生效
+        // （值没变就不会触发上面的变更监听）。
+        refresh();
+    }
+
+    /**
+     * 把内置清单写进配置（只在注册完成后走一次）。
+     *
+     * <p>这是「代码侧只提供初始值」那一半：配置默认值只在<b>生成文件那一刻</b>起作用，而这份配置早期叫
+     * 「额外组件」、默认为空——已有存档里那份文件就是空列表。不补的话，那些存档永远看不到内置组件，
+     * 而识别又完全以配置为准，结果是组件全认不出。</p>
+     *
+     * <p>只补「配置里没有的 id」：已有条目一律不动，所以幂等。新装的邻居模组也靠这一步接入。</p>
+     */
+    private static void ensureCatalogPresent() {
+        try {
+            List<ComponentSpec> current = COMPONENT_GAINS.get();
+            Set<ResourceLocation> present = new HashSet<>();
+            for (ComponentSpec spec : current) {
+                if (spec != null) {
+                    present.add(spec.id());
+                }
+            }
+            List<ComponentSpec> merged = new ArrayList<>(current.size());
+            for (ComponentSpec spec : current) {
+                if (spec != null) {
+                    merged.add(spec);
+                }
+            }
+            int before = merged.size();
+            for (ComponentSpec spec : BuiltInComponents.catalog()) {
+                if (!present.contains(spec.id())) {
+                    merged.add(spec);
+                }
+            }
+            if (merged.size() == before) {
+                return;
+            }
+            // set 返回「是否真的变了」：文件只读/目录不可写时会是 false，这属于要看得见的问题——
+            // 识别完全以配置为准，写不进去就等于内置组件认不出。
+            boolean applied = COMPONENT_GAINS.set(List.copyOf(merged));
+            if (applied) {
+                LOGGER.info("组件配置：补入 {} 条内置组件（原有 {} 条）", merged.size() - before, before);
+            } else {
+                LOGGER.warn("组件配置：内置清单写回失败（配置文件可能只读），本次仍按内存表生效；"
+                        + "重启后请手动补上 {} 条，否则这些组件将识别不出来", merged.size() - before);
+            }
+        } catch (RuntimeException e) {
+            // 配置还没加载完、或文件只读：不值得让流程断在这里——内置识别照旧生效，只是列表少几行。
+            LOGGER.warn("内置组件清单补入失败，配置维持原样", e);
+        }
     }
 
     /**
@@ -158,10 +225,13 @@ public final class ModularCellConfig {
             }
         } catch (RuntimeException e) {
             // 静态初始化那一次读值可能早于配置加载完成。不能让它把类初始化搞崩——那会升级成
-            // ExceptionInInitializerError，之后每次碰本类都是 NoClassDefFoundError，而症状只是
-            // 「额外组件表空着」。退化成保留现有表、记一行。
-            LOGGER.warn("额外组件表读取失败，保留现有 {} 条", configuredGains.size(), e);
-            return;
+            // ExceptionInInitializerError，之后每次碰本类都是 NoClassDefFoundError。
+            // 降级用内置清单兜底：连临时表都没有的话，所有组件都会当场认不出（连“能插槽”都做不到）。
+            LOGGER.warn("组件表读取失败，本次用内置清单兜底", e);
+            parsed.clear();
+            for (ComponentSpec spec : BuiltInComponents.catalog()) {
+                parsed.put(spec.id(), spec.gain());
+            }
         }
         configuredGains = Map.copyOf(parsed);
         LOGGER.info("组件配置：{} 条额外条目已生效", configuredGains.size());

@@ -3,7 +3,8 @@ package io.github.lounode.ae2modularcells;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 
 import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
 
@@ -30,9 +31,10 @@ public final class AE2ModularCells {
         // 配置：schema 由 MezzConfig 托管，必须在这里就建好。配置界面靠枚举「已 build 的 schema」发现配置，
         // 而本类的静态初始化只会在第一次被碰时跑——那个人可能是很晚才发生的容量计算。
         ModularCellConfig.init();
-        // 注册完成后再开始校验 componentGains 里的物品是否存在：模组物品要到注册事件才进表，
-        // 构造期那一刻查什么都是「不存在」，会把合法条目误报成「物品不在注册表里」。
-        modBus.addListener(FMLCommonSetupEvent.class, event -> ModularCellConfig.markRegistryReady());
+        // 配置就绪要等**服务器启动**，不能用 FMLCommonSetupEvent：配置是 SERVER 归属（per-world 文件），
+        // 模组构造期与 common setup 那一刻它还没加载——实测那里读值会抛，于是内置清单写不进去、
+        // 识别只能靠兜底，用户对文件的修改也变成实际不生效。
+        NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class, event -> ModularCellConfig.onServerStarted());
         AEModularCellsRegistries.register(modBus);
     }
 }
