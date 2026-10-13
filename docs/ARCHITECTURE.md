@@ -243,6 +243,29 @@ public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellMo
 - 方块状态与物品模型 JSON：本模组不做数据生成，三档那几份可以照抄（形状变体 `fill=0..4`）。
 - 语言键 `block.<命名空间>.<方块名>`。
 
+**脚本侧（KubeJS）**
+
+整合包脚本也能定义一个档位——给 {@code minecraft:block} 注册了一个本模组的具名 builder 变体，脚本写：
+
+```js
+StartupEvents.registry('block', event => {
+    event.create('my_tier_energy_cell_module', 'ae2modularcells:module')
+        .capacity(400000).transferRate(2000).componentSlots(2)
+        .maxTransferRate(32000).maxInputRate(16000)
+})
+```
+
+等级名默认取方块名去掉 `_energy_cell_module` 后缀（可用 `tierId('...')` 覆盖）。
+
+**入口为什么是方块而不是等级**：KubeJS 的落盘只认「当前正在注册的那个注册表」——它的
+`RegistryEventHandler#handleRegistryEvent` 取出该注册表的存储后逐个 `event.register`。而 `minecraft:block` 这类
+vanilla 注册表早于本模组的自建注册表，所以在等级 builder 里顺带 `add(Registries.BLOCK, ...)` 会被**静默丢弃**
+（实测过：等级建出来了、方块没有）。反过来，方块最早、物品与方块实体类型都比它晚，所以以方块为入口能落盘；
+等级更晚，于是由方块 builder 产出实例、交给本模组在等级注册表那一次 `RegisterEvent` 补注册
+（`ModularCellsApi#registerScriptTiers`），脚本侧不必关心时序。
+
+脚本建的套装经 `ModularCellsApi#registerModuleBlockSet` 与 Java 注册的汇进同一张清单，之后的处理完全一样。
+
 **边界**：等级与方块套装是**双端都要满足**的注册表——只在服务端注册的等级，客户端解不出那一档（终端里的结构快照按位号配对）。位号因此在两端必须一致，而这靠「两端装了同一批等级」保证，与注册顺序无关（见 §2.1）。
 
 ---

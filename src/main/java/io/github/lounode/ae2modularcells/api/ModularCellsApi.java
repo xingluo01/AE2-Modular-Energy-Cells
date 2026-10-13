@@ -18,6 +18,7 @@ import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.neoforged.neoforge.registries.RegisterEvent;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.ModularCellTiers;
@@ -287,6 +288,48 @@ public final class ModularCellsApi {
         holder.setPlain(type);
         block.get().setBlockEntity(EnergyCellModuleBlockEntity.class, type, null, null);
         return type;
+    }
+
+    /**
+     * 脚本建的等级，等着被注册。
+     *
+     * <p>为什么不能就地注册：KubeJS 的落盘只认「当前正在注册的那个注册表」
+     * （见 {\@code RegistryEventHandler#handleRegistryEvent}：它取 {@code RegistryObjectStorage.of(key)} 然后
+     * 逐个 {@code event.register}），而 vanilla 的注册表（{@code minecraft:block} 等）都早于本模组的自建注册表。
+     * 所以在方块 builder 里 new 出来的等级无处安放——只能先存着，等本模组自己那一次 {@code RegisterEvent}。</p>
+     */
+    private record PendingTier(ResourceLocation id, EnergyCellTier tier) {}
+
+    private static final List<PendingTier> PENDING_TIERS =
+            Collections.synchronizedList(new ArrayList<>());
+
+    /**
+     * 登记一个由脚本产出的等级；真正注册发生在 {@link #registerScriptTiers(RegisterEvent)}。
+     *
+     * <p>等级实例必须与它的方块套装共用同一个——启动期会按恒等比对「套装声明的等级」与「方块自报的等级」。</p>
+     */
+    public static void registerScriptTier(ResourceLocation id, EnergyCellTier tier) {
+        if (registrationClosed) {
+            throw new IllegalStateException("A scripted energy cell tier (" + id
+                    + ") was created after the server started; scripted tiers have to be created during startup");
+        }
+        PENDING_TIERS.add(new PendingTier(id, tier));
+    }
+
+    /**
+     * 等级注册表那一次 {@code RegisterEvent}：把脚本建的等级补进去。
+     *
+     * <p>由模组入口挂到模组总线（{@code modBus.addListener(ModularCellsApi::registerScriptTiers)}）。</p>
+     */
+    public static void registerScriptTiers(RegisterEvent event) {
+        if (!event.getRegistryKey().equals(ModularCellTiers.TIER_REGISTRY_KEY)) {
+            return;
+        }
+        synchronized (PENDING_TIERS) {
+            for (var pending : PENDING_TIERS) {
+                event.register(ModularCellTiers.TIER_REGISTRY_KEY, pending.id(), pending::tier);
+            }
+        }
     }
 
     private ModularCellsApi() {

@@ -8,8 +8,8 @@
  * <p>脚本用法（{@code startup_scripts}）：</p>
  *
  * <pre>{@code
- * StartupEvents.registry('ae2modularcells:energy_cell_tier', event => {
- *     event.create('my_tier')
+ * StartupEvents.registry('block', event => {
+ *     event.create('my_tier_energy_cell_module', 'ae2modularcells:module')
  *         .capacity(400000)
  *         .transferRate(2000)
  *         .componentSlots(2)
@@ -18,7 +18,9 @@
  * })
  * }</pre>
  *
- * <p>默认会一并建出配套的模块方块、方块物品与方块实体类型。贴图、方块状态 JSON 与语言键仍要自己准备，
- * 口径见 {@code docs/ARCHITECTURE.md} §5.1。</p>
+ * <p>入口是方块而不是等级，原因见 {@link ModularCellsKubeJSPlugin} 的类 javadoc：KubeJS 的落盘只认「当前正在
+ * 注册的那个注册表」。等级名默认取方块名去掉 {@code _energy_cell_module} 后缀。</p>
+ *
+ * <p>贴图、方块状态 JSON 与语言键仍要自己准备，口径见 {@code docs/ARCHITECTURE.md} §5.1。</p>
  */
 package io.github.lounode.ae2modularcells.integration.kubejs;

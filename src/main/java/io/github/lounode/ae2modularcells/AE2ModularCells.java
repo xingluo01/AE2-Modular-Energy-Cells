@@ -6,6 +6,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 
+import io.github.lounode.ae2modularcells.api.ModularCellsApi;
 import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
 
 /**
@@ -36,5 +37,8 @@ public final class AE2ModularCells {
         // 识别只能靠兜底，用户对文件的修改也变成实际不生效。
         NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class, event -> ModularCellConfig.onServerStarted());
         AEModularCellsRegistries.register(modBus);
+        // 脚本（KubeJS）建的等级：KubeJS 自己的落盘只认「当前正在注册的注册表」，而自建注册表晚于 vanilla 那些，
+        // 所以脚本里 new 出来的等级得由本模组在它自己那一次 RegisterEvent 里补注册。
+        modBus.addListener(ModularCellsApi::registerScriptTiers);
     }
 }
