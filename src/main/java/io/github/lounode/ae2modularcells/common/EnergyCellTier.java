@@ -54,7 +54,7 @@ public enum EnergyCellTier {
         return baseTransferRate;
     }
 
-    /** 每个模块提供的组件槽位数（1 / 2 / 3），也是容量与速率公式里的 C 的上界。 */
+    /** 每个模块提供的组件槽位数（1 / 2 / 3），也是容量与速率公式里 `C_cap` / `C_tr` 的上界。 */
     public int componentSlots() {
         return componentSlots;
     }

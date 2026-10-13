@@ -3,7 +3,7 @@ package io.github.lounode.ae2modularcells.common;
 /**
  * 一个存储组件为增益算法提供的贡献：两个维度各有一个值和一个修正倍率。
  *
- * <p>公式里的位置：{@code D = (A + Σ S_i × m_i × k) × (1 + b × C)}，其中 {@code S_i} 是容量值、
+ * <p>公式里的位置：{@code D = (A + Σ S_i × m_i × k) × (1 + b × C_cap)}，其中 {@code S_i} 是容量值、
  * {@code m_i} 是这个组件自己的容量倍率（速率侧同理，乘 {@code kv} 与 {@code mv_i}）。倍率让同一档的组件能有
  * 强弱之分——例如 OMNI Cells 的三组组件值完全一样，靠倍率拉开。</p>
  *

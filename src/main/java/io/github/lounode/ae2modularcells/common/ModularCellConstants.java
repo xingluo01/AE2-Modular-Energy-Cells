@@ -30,7 +30,7 @@ public final class ModularCellConstants {
      */
     public static final int MAX_BLOCKS = MAX_SIDE * MAX_SIDE * MAX_SIDE;
 
-    // ---- 容量公式：D = (A + Σ S_i × k) × (1 + b × C) ----
+    // ---- 容量公式：D = (A + Σ S_i × m_i × k) × (1 + b × C_cap) ----
 
     /**
      * 存储组件容量折扣 k：每个组件往模块容量里贡献 {@code S_i × k}。
@@ -46,10 +46,10 @@ public final class ModularCellConstants {
      */
     public static final double COMPONENT_DISCOUNT = 0.2D;
 
-    /** 组件数量加成 b：装满 C 个组件时，容量乘 {@code (1 + b × C)}，故基础/致密/超密最多 ×3 / ×5 / ×7。可配，这里是默认值。 */
+    /** 组件数量加成 b：装满「会提供容量」的组件时，容量乘 {@code (1 + b × C_cap)}，故基础/致密/超密最多 ×3 / ×5 / ×7。可配，这里是默认值。 */
     public static final double CAPACITY_COUNT_BONUS = 2.0D;
 
-    // ---- 速率公式：D_v = (V + Σ Sv_i × kv) × (1 + bv × C) ----
+    // ---- 速率公式：D_v = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C_tr) ----
 
     /**
      * 传输组件速率折扣 kv：每个组件往模块速率里贡献 {@code Sv_i × kv}（容量折扣的 1/50）。
@@ -58,7 +58,7 @@ public final class ModularCellConstants {
      */
     public static final double TRANSFER_DISCOUNT = 0.0001D;
 
-    /** 速率侧的组件数量加成 bv：装满 C 个组件时，速率乘 {@code (1 + bv × C)}。可配，这里是默认值。 */
+    /** 速率侧的组件数量加成 bv：装满「会提供速率」的组件时，速率乘 {@code (1 + bv × C_tr)}。可配，这里是默认值。 */
     public static final double TRANSFER_COUNT_BONUS = 0.1D;
 
     /**

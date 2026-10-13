@@ -9,9 +9,9 @@ import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
  * 容量与速率的计算口径——两条公式只在这里实现一次。
  *
  * <pre>
- * 单模块容量   D    = (A + Σ S_i  × m_i  × k)  × (1 + b  × C)
+ * 单模块容量   D    = (A + Σ S_i  × m_i  × k)  × (1 + b  × C_cap)
  * 总容量       T    = Σ D_j          （每块按自己那一档的 A）
- * 单模块速率   D_v  = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C)
+ * 单模块速率   D_v  = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C_tr)
  * 总速率       T_v  = min(Σ D_vj, Σ V_max_j)      （上限也是逐块之和）
  * 总输入速率   T_in = min(T_v × f_in, Σ V_in_max_j)
  * </pre>
@@ -27,24 +27,29 @@ public final class CellMath {
     private CellMath() {
     }
 
-    /** 一块模块的产出：容量与速率一起算出来，因为两者共用同一个 {@code C}。 */
+    /** 一块模块的产出：容量与速率一起算出来（两者都要逐槽扫一遍组件，只是各自数各自的）。 */
     public record ModuleGains(long capacity, long transfer) {
     }
 
     /**
-     * 一块模块的容量与速率：{@code D = (A + Σ S_i × m_i × k) × (1 + b × C)}、
-     * {@code D_v = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C)}。
+     * 一块模块的容量与速率：{@code D = (A + Σ S_i × m_i × k) × (1 + b × C_cap)}、
+     * {@code D_v = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C_tr)}。
      *
-     * <p><b>{@code C} 数的是「这一块实际插了几个组件」</b>，不是「有几个给了容量 / 有几个给了速率」：一个组件
-     * 可以同时贡献两个维度，而只给一维的组件同样占着一个槽。早先两侧各自按「数组里非零的个数」数一次，那时容量
-     * 组件与能量存储组件互斥、两种数法恰好等价；组件能双贡献之后，那样数会漏掉「只给速率」的组件。</p>
+     * <p><b>数量加成按维分侧计数</b>：{@code C_cap} 只数「这一块插了几个真的会提供容量的组件」，{@code C_tr}
+     * 只数会提供速率的。所以插一个只给容量的组件，速率那一侧不会跟着涨——两侧互不干扰。双贡献的组件在两侧
+     * 各计一次。</p>
+     *
+     * <p>分侧计数的代价是「插了不提供这一维的组件时，这一维不再吃数量加成」。这一点在改前算过：纯容量或纯
+     * 速率的结构里 {@code C_cap} / {@code C_tr} 恰好等于总组件数，数值与分侧之前<b>逐字一致</b>，所以原有平衡
+     * 不受影响；只有混插会变弱，而那正是分侧的目的。</p>
      *
      * @param slots 该模块的组件槽，下标即槽位；{@code null}、以及两个维度都为 {@code 0} 的贡献都算空槽。多于
      *              槽位数的部分忽略——存档被改坏时不至于算出一台超级电池
      */
     public static ModuleGains moduleGains(EnergyCellTier tier, ComponentGain[] slots) {
         int limit = slots == null ? 0 : Math.min(slots.length, tier.componentSlots());
-        int count = 0;
+        int capacityCount = 0;
+        int transferCount = 0;
         double capacitySum = 0.0D;
         double transferSum = 0.0D;
         for (int i = 0; i < limit; i++) {
@@ -54,12 +59,18 @@ public final class CellMath {
             }
             capacitySum += gain.capacity() * gain.capacityMultiplier();
             transferSum += gain.transfer() * gain.transferMultiplier();
-            count++;
+            // 两个计数各数各的：倍率为 0 等于这一维被关掉，不算在内（hasXxx 已把这个口径包含进去了）。
+            if (gain.hasCapacity()) {
+                capacityCount++;
+            }
+            if (gain.hasTransfer()) {
+                transferCount++;
+            }
         }
         double capacity = (tier.baseCapacity() + capacitySum * ModularCellConfig.componentDiscount())
-                * (1.0D + ModularCellConfig.capacityCountBonus() * count);
+                * (1.0D + ModularCellConfig.capacityCountBonus() * capacityCount);
         double transfer = (tier.baseTransferRate() + transferSum * ModularCellConfig.transferDiscount())
-                * (1.0D + ModularCellConfig.transferCountBonus() * count);
+                * (1.0D + ModularCellConfig.transferCountBonus() * transferCount);
         return new ModuleGains(Math.round(capacity), Math.round(transfer));
     }
 
