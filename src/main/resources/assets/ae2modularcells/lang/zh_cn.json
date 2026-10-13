@@ -39,6 +39,8 @@
   "ae2modularcells.config.cells.components.componentGains": "存储组件清单",
   "ae2modularcells.config.cells.components.componentGains.description": "每行一个组件：改值可覆盖它的贡献，调低就变弱，写成 0:0 就禁用，新增行可以声明内置清单以外的物品。删掉的行只到下次启动为止——内置清单会被写回来，要长期禁用请写 0:0。",
   "ae2modularcells.config.cells.components.componentGains.syntax": "<物品 id>=<容量值>:<速率值>，两个值都可以省略",
+  "ae2modularcells.config.cells.components.componentGains.syntax.id": "物品 id，要带命名空间（如 somemod:item）",
+  "ae2modularcells.config.cells.components.componentGains.syntax.values": "<容量值>:<速率值>，两个值都可以省略",
   "ae2modularcells.config.cells.components.componentGains.error.empty": "条目是空的。删掉这一行，或者填上个物品 id。",
   "ae2modularcells.config.cells.components.componentGains.error.badId": "物品 id 解析不出来（应形如 somemod:item，命名空间不能省）",
   "ae2modularcells.config.cells.components.componentGains.error.tooManyValues": "贡献值最多两个（先容量后速率）",

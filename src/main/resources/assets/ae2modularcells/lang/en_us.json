@@ -39,6 +39,8 @@
   "ae2modularcells.config.cells.components.componentGains": "Storage Components",
   "ae2modularcells.config.cells.components.componentGains.description": "One component per line. Change a value to override what it contributes, write 0:0 to disable it, add a line to declare an item outside the built-in list. Deleting a line only lasts until the next start: the built-in list is written back in, so use 0:0 to keep something disabled.",
   "ae2modularcells.config.cells.components.componentGains.syntax": "<item id>=<capacity>:<rate>; either value may be omitted",
+  "ae2modularcells.config.cells.components.componentGains.syntax.id": "Item id, namespace included (somemod:item)",
+  "ae2modularcells.config.cells.components.componentGains.syntax.values": "<capacity>:<rate>; either value may be omitted",
   "ae2modularcells.config.cells.components.componentGains.error.empty": "Empty entry. Delete this line or fill in an item id.",
   "ae2modularcells.config.cells.components.componentGains.error.badId": "Cannot parse the item id (expected somemod:item - the namespace is required)",
   "ae2modularcells.config.cells.components.componentGains.error.tooManyValues": "At most two values (capacity first, then rate)",
