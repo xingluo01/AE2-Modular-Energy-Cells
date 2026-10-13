@@ -3,9 +3,10 @@ package io.github.lounode.ae2modularcells.common;
 /**
  * 多方块的尺寸、上限与两条公式的系数。
  *
- * <p>这些数字同时被结构检测、容量汇总与菜单展示引用：{@link #MAX_BLOCKS} 是任何一次结构扫描的硬上界，
- * {@link #COMPONENT_DISCOUNT} 与 {@link #TRANSFER_DISCOUNT} 是组件折扣，{@link #CAPACITY_COUNT_BONUS}
- * 与 {@link #TRANSFER_COUNT_BONUS} 是组件数量加成，{@link #INPUT_RATIO} 是充能侧的折半系数。</p>
+ * <p>尺寸与上界（{@link #MIN_SIDE} / {@link #MAX_SIDE} / {@link #MAX_BLOCKS}）是编译期常量：它们决定数组、
+ * 位图与迭代上限，不进配置。而五个公式系数（{@link #COMPONENT_DISCOUNT} / {@link #CAPACITY_COUNT_BONUS}
+ * / {@link #TRANSFER_DISCOUNT} / {@link #TRANSFER_COUNT_BONUS} / {@link #INPUT_RATIO}）在这里只是<b>默认值</b>
+ * ——实际取值由配置提供，见 {@code common.config.ModularCellConfig}。</p>
  *
  * <p>分头写死这些常数就会在某一处悄悄脱节——「16³ = 4096」不是可以随手重算的数，各处的数组、位图与
  * 迭代上限都要照它取。</p>
@@ -39,15 +40,10 @@ public final class ModularCellConstants {
      */
     public static final double COMPONENT_DISCOUNT = 0.2D;
 
-    /** 组件容量折扣的配置下限。 */
+    /** 组件容量折扣 k 的配置下限。 */
     public static final double COMPONENT_DISCOUNT_MIN = 0.001D;
 
-    /**
-     * 组件容量折扣的候选上限。
-     *
-     * <p>目前没有配置系统读这三个区间常量——它们是给「做成可配置项」预留的边界。真接上配置时记得让上限
-     * 盖得住 {@link #COMPONENT_DISCOUNT}，否则默认值会被夹回去。</p>
-     */
+    /** 组件容量折扣 k 的配置上限。要盖得住 {@link #COMPONENT_DISCOUNT}，否则默认值会被夹回去。 */
     public static final double COMPONENT_DISCOUNT_MAX = 0.5D;
 
     /** 组件数量加成 b：装满 C 个组件时，容量乘 {@code (1 + b × C)}，故基础/致密/超密最多 ×3 / ×5 / ×7。 */

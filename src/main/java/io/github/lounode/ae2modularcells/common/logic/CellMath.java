@@ -3,6 +3,7 @@ package io.github.lounode.ae2modularcells.common.logic;
 import io.github.lounode.ae2modularcells.common.ComponentGain;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.ModularCellConstants;
+import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
 
 /**
  * 容量与速率的计算口径——两条公式只在这里实现一次。
@@ -17,7 +18,7 @@ import io.github.lounode.ae2modularcells.common.ModularCellConstants;
  *
  * <p>符号：{@code S_i} 与 {@code Sv_i} 都取自组件槽里同一个 {@link ComponentGain}——一个组件可以同时贡献两个
  * 维度；{@code C} 是该模块实际插了几个组件；{@code k} / {@code kv} / {@code b} / {@code bv} / {@code f_in}
- * 见 {@link ModularCellConstants}。</p>
+ * 五项系数由配置提供（默认值在 {@link ModularCellConstants}，改 {@code config/ae2modularcells-common.toml}）。</p>
  */
 public final class CellMath {
 
@@ -53,10 +54,10 @@ public final class CellMath {
             transferSum += gain.transfer();
             count++;
         }
-        double capacity = (tier.baseCapacity() + capacitySum * ModularCellConstants.COMPONENT_DISCOUNT)
-                * (1.0D + ModularCellConstants.CAPACITY_COUNT_BONUS * count);
-        double transfer = (tier.baseTransferRate() + transferSum * ModularCellConstants.TRANSFER_DISCOUNT)
-                * (1.0D + ModularCellConstants.TRANSFER_COUNT_BONUS * count);
+        double capacity = (tier.baseCapacity() + capacitySum * ModularCellConfig.componentDiscount())
+                * (1.0D + ModularCellConfig.capacityCountBonus() * count);
+        double transfer = (tier.baseTransferRate() + transferSum * ModularCellConfig.transferDiscount())
+                * (1.0D + ModularCellConfig.transferCountBonus() * count);
         return new ModuleGains(Math.round(capacity), Math.round(transfer));
     }
 
@@ -67,7 +68,7 @@ public final class CellMath {
 
     /** 总输入速率：{@code T_in = min(T_v × f_in, Σ V_in_max_j)}，充能方向比放电方向更紧。 */
     public static long totalInputRate(long totalTransferRate, long summedMaxInputRates) {
-        long input = Math.round(totalTransferRate * ModularCellConstants.INPUT_RATIO);
+        long input = Math.round(totalTransferRate * ModularCellConfig.inputRatio());
         return Math.min(input, Math.max(0L, summedMaxInputRates));
     }
 }

@@ -2,19 +2,24 @@ package io.github.lounode.ae2modularcells.common;
 
 import org.jetbrains.annotations.Nullable;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import appeng.api.implementations.items.IStorageComponent;
 
+import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
 import io.github.lounode.ae2modularcells.integration.appflux.AppFluxComponents;
 
 /**
  * 存储组件识别与取值的唯一入口。
  *
  * <p>槽位收的是「现成的存储组件」——AE2 的 {@code 1k ~ 256k}、MEGA Cells 的 {@code 1m ~ 256m}、AppFlux 的
- * {@code core_1k ~ 256m}，本模组不自制组件物品。识别分两条路：</p>
+ * {@code core_1k ~ 256m}，本模组不自制组件物品。识别按优先级三层：</p>
  *
  * <ul>
+ * <li><b>配置</b>：玩家或整合包在 {@code componentGains} 里声明的条目，优先级最高
+ * （见 {@link ModularCellConfig}）——它要能覆盖下面两条内置识别的结果。</li>
  * <li><b>接口路径</b>：AE2 本体与 MEGA Cells 的组件都实现了 AE2 的公开接口 {@link IStorageComponent}，
  * 只要那个物品实现了它，就认；值取 {@code getBytes(stack)}，这一路只贡献容量。</li>
  * <li><b>名字路径</b>：AppFlux 的 {@code core_1k ~ core_256m} <b>没有</b>实现那个接口，只能按注册名映射到
@@ -43,6 +48,17 @@ public final class StorageComponents {
     public static ComponentGain gainOf(ItemStack stack) {
         if (stack.isEmpty()) {
             return null;
+        }
+        // 配置路径：玩家或整合包声明的额外组件，优先级最高——要能覆盖下面两条内置识别的结果。
+        // 默认是空表，所以没配过时这一段不花代价。
+        var configured = ModularCellConfig.configuredGains();
+        if (!configured.isEmpty()) {
+            // getKey 可能给 null（未注册的物品），而配置表是不可变 Map、get(null) 会抛，所以先判。
+            ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            var declared = id == null ? null : configured.get(id);
+            if (declared != null) {
+                return declared;
+            }
         }
         // 接口路径：AE2 本体与 MEGA Cells 的 cell_component_*（都实现了这个接口），只贡献容量。
         if (stack.getItem() instanceof IStorageComponent component && component.isStorageComponent(stack)) {
