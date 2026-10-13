@@ -38,7 +38,7 @@
   "ae2modularcells.config.cells.coefficients.transferCountBonus.description": "With C components installed, per-module rate is multiplied by (1 + bv x C).",
   "ae2modularcells.config.cells.coefficients.inputRatio": "Input Ratio (f_in)",
   "ae2modularcells.config.cells.coefficients.inputRatio.description": "Input cap of the whole multiblock = total rate x f_in, then clamped by the sum of the per-block input caps.",
-  "ae2modularcells.config.cells.components": "Components",
+  "ae2modularcells.config.cells.components": "Storage Components",
   "ae2modularcells.config.cells.components.description": "Extra items to treat as storage components, on top of the built-in detection.",
   "ae2modularcells.config.cells.components.componentGains": "Extra Components",
   "ae2modularcells.config.cells.components.componentGains.description": "Items to treat as storage components. One entry per line, <item id>=<capacity>:<rate>; either value may be omitted. Entries here take priority over built-in detection."

@@ -38,7 +38,7 @@
   "ae2modularcells.config.cells.coefficients.transferCountBonus.description": "插入 C 个组件时，单模块速率乘（1 + bv × C）。",
   "ae2modularcells.config.cells.coefficients.inputRatio": "输入比例 f_in",
   "ae2modularcells.config.cells.coefficients.inputRatio.description": "整段输入上限 = 总速率 × f_in，再被各块输入上限之和夹住。",
-  "ae2modularcells.config.cells.components": "组件",
+  "ae2modularcells.config.cells.components": "存储组件配置",
   "ae2modularcells.config.cells.components.description": "在内置识别之外，额外认作存储组件的物品。",
   "ae2modularcells.config.cells.components.componentGains": "额外组件",
   "ae2modularcells.config.cells.components.componentGains.description": "额外认作存储组件的物品。每行一条，语法 <物品 id>=<容量值>:<速率值>，两个值都可以省略。这里写的条目优先于内置识别。"
