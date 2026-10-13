@@ -167,6 +167,7 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
     - 若将来要改成占频道：只能在建节点前设（createMainNode() 覆写里 setFlags(REQUIRE_CHANNEL)）——创建后调 setFlags 会抛 IllegalStateException，且改不到已建的节点。
     - 后果要知道：一旦真加了这个旗标，频道不足时该段会被判为未激活、能量池不参与网格能量平衡。
 13. **开发环境测试 mod：建筑手杖**：原作 Construction Wand 只发到 1.20.2/Forge，开发环境挂的是它在 1.21.1/NeoForge 上的续作 **Construction Wand - KOTS**（`maven.modrinth:construction-wand-kots:cFpoCw3t`，只进 `clientLocalRuntime`，**不引 API**）——用途只是实机看「用建筑手杖对着本模组方块延伸摆放」的观感。
+14. **手势标尺是否计入修正倍率**：当前 `ComponentGain#magnitude()` 只取值、不含倍率，而 OMNI 三组组件的值完全相同（同为档位值）——所以它们互为「同档同种」，手势无法在这三组之间互换（只能手动抠出来再插）。要让手势能换就得把倍率算进标尺，而那会推翻「倍率不该影响档位比较」的理由（见 `ComponentGain#magnitude` 的注释）。当前选择：不动。
 
 ## 四、已知欠账 / 有意不做
 
