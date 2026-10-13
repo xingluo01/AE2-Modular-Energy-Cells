@@ -80,11 +80,22 @@ public final class ModularCellConstants {
         return side >= MIN_SIDE && side <= MAX_SIDE;
     }
 
-    /** 单个模块最多能插几个组件——取所有等级里的最大值（含第三方注册的），用作菜单与存档读取时的防御上界。 */
+    /**
+     * 单个模块最多能插几个组件——取所有已注册等级里的最大值（含第三方注册的），用作菜单与存档读取时的防御上界。
+     *
+     * <p><b>注册表还没填时的兜底</b>：本方法会在类加载期被调用（菜单的槽位数组长度需要它），而那时等级注册表
+     * 可能还是空的。空表就退回内置三档的最大值——那些实例是静态构造好的，任何时刻都读得到。没有这层兜底的话，
+     * 终端会静默地拿到 0 槽（而且不报错）。</p>
+     */
     public static int maxComponentSlots() {
         int max = 0;
         for (var tier : ModularCellTiers.all()) {
             max = Math.max(max, tier.componentSlots());
+        }
+        if (max == 0) {
+            for (var tier : ModularCellTiers.builtIn().values()) {
+                max = Math.max(max, tier.componentSlots());
+            }
         }
         return max;
     }

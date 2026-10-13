@@ -22,6 +22,7 @@ import io.github.lounode.ae2modularcells.common.BuiltInComponents;
 import io.github.lounode.ae2modularcells.common.ComponentGain;
 import io.github.lounode.ae2modularcells.common.ComponentSpec;
 import io.github.lounode.ae2modularcells.common.ModularCellConstants;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 
 /**
  * 模组配置：两条公式的系数，以及「额外把哪些物品认作存储组件」。
@@ -155,6 +156,8 @@ public final class ModularCellConfig {
      */
     public static void onServerStarted() {
         ComponentSpecSerializer.markRegistryReady();
+        // 等级注册表此时已填好：先校验再往下走，配置错误在启动期就暴露。
+        ModularCellTiers.validateRegistry();
         ensureCatalogPresent();
         // 无论有没有补入都重读一次：兜底分支填的只是运行时表，不重读的话用户对文件的修改在本会话内不生效
         // （值没变就不会触发上面的变更监听）。

@@ -89,6 +89,47 @@ public final class ModularCellTiers {
     public static final DeferredHolder<EnergyCellTier, EnergyCellTier> SUPERDENSE =
             TIERS.register(SUPERDENSE_ID, () -> SUPERDENSE_INSTANCE);
 
+    /** 内置三档的个数：第三方等级的固定位号从它开始。 */
+    private static final int BUILT_IN_COUNT = 3;
+
+    /**
+     * 启动期校验：把配置错误挡在启动阶段，而不是让它到运行期才爆。
+     *
+     * <p>两件事要在注册表填完之后确认：① 每个等级的注册名与它自称的 {@code id} 一致（否则语言键与方块名会用
+     * 一个名字、而按注册名找不到，症状是 {@code byId} 命中但提示与同步对不上）；② 固定位号落进 {@code int}
+     * 掩码能装的位数内——位号超界的异常否则会抛在结构重算的半路上，把一台方块的问题放大成整段加载失败。</p>
+     *
+     * <p>调用时机：服务端启动（配置就绪、注册表已填）。客户端不单独校验——它的角色是按位号解码快照。
+     */
+    public static void validateRegistry() {
+        for (var tier : all()) {
+            var key = REGISTRY.getKey(tier);
+            if (key == null || !key.getPath().equals(tier.id())) {
+                throw new IllegalStateException("Energy cell tier registered as " + key
+                        + " but reports id " + tier.id() + "; the two must match");
+            }
+            int index = indexOf(tier);
+            if (index < 0 || index >= Integer.SIZE) {
+                throw new IllegalStateException("Energy cell tier " + key + " resolved to bit " + index
+                        + ", but the tier mask can only hold " + Integer.SIZE + " tiers");
+            }
+        }
+    }
+
+    /**
+     * 全量重扫：按已填好的注册表重新算位号。
+     *
+     * <p>注册表填好之前 {@link #indexOf} 只能认内置三档（这是刻意的），所以第三方等级的位号要到注册完成之后
+     * 才算得出来；服务端启动时调一次，此后不变。</p>
+     */
+    private static List<EnergyCellTier> externalTiersSortedByName() {
+        var builtIn = builtIn().values();
+        return REGISTRY.stream()
+                .filter(tier -> !builtIn.contains(tier))
+                .sorted(Comparator.comparing(EnergyCellTier::id))
+                .toList();
+    }
+
     private ModularCellTiers() {
     }
 
@@ -98,14 +139,14 @@ public final class ModularCellTiers {
     }
 
     /**
-     * 所有等级，按注册顺序（= {@code tierMask} 的位序）。
+     * 所有等级，按固定位号排序。
      *
      * <p>每次调用都排一次序而不缓存：等级只有个位数到几十个，一次排序是微秒级；而缓存要处理「注册表在
-     * {@code NewRegistryEvent} 之前是空的」这个时序陷阱，容易缓存出一张空表。</p>
+     * {@code RegisterEvent} 之前是空的」这个时序陷阱，容易缓存出一张空表。</p>
      */
     public static List<EnergyCellTier> all() {
         return REGISTRY.stream()
-                .sorted(Comparator.comparingInt(REGISTRY::getId))
+                .sorted(Comparator.comparingInt(ModularCellTiers::indexOf))
                 .toList();
     }
 
@@ -135,9 +176,58 @@ public final class ModularCellTiers {
         return REGISTRY.getKey(tier);
     }
 
-    /** 等级在注册表里的序号，也就是 {@code tierMask} 的位号。 */
+    /**
+     * 等级在 {@code tierMask} 里的固定位号。
+     *
+     * <p><b>位号不来自注册表 id</b>：注册顺序由各模组的加载与事件触发次序决定，第三方先注册就会夺走 0/1/2，
+     * 于是本模组三档变成 3/4/5、旧存档的 {@code tierMask} 全部错位——而位号是存档协议，不能建在「谁先加载」
+     * 上。所以：内置三档写死 0/1/2（与枚举时代的 {@code ordinal()} 一致，旧存档因此仍然读得对），其余等级从 3
+     * 起<b>按注册名排序</b>分配——同样的模组集合在任何一端都得到同样的位号。
+     *
+     * <p>不在注册表里的给 {@code -1}。</p>
+     */
     public static int indexOf(EnergyCellTier tier) {
-        return REGISTRY.getId(tier);
+        int builtIn = builtInIndex(tier);
+        if (builtIn >= 0) {
+            return builtIn;
+        }
+        // 只对“非内置”的等级排序，且不调 all()——all() 正是按本方法排序的，会无限递归。
+        List<EnergyCellTier> others = REGISTRY.stream()
+                .filter(candidate -> builtInIndex(candidate) < 0)
+                .sorted(Comparator.comparing(candidate -> registryNameOf(candidate).toString()))
+                .toList();
+        int rank = others.indexOf(tier);
+        return rank < 0 ? -1 : BUILT_IN_COUNT + rank;
+    }
+
+    /** 位号 → 等级；没有这一位给 {@code null}。与 {@link #indexOf} 互逆。 */
+    @Nullable
+    public static EnergyCellTier byIndex(int index) {
+        if (index < 0) {
+            return null;
+        }
+        for (var tier : REGISTRY) {
+            if (indexOf(tier) == index) {
+                return tier;
+            }
+        }
+        return null;
+    }
+
+    /** 内置三档的固定位号（0/1/2），不是内置档给 -1。 */
+    private static int builtInIndex(EnergyCellTier tier) {
+        if (tier == BASIC_INSTANCE) {
+            return 0;
+        }
+        if (tier == DENSE_INSTANCE) {
+            return 1;
+        }
+        if (tier == SUPERDENSE_INSTANCE) {
+            return 2;
+        }
+        var externals = externalTiersSortedByName();
+        int offset = externals.indexOf(tier);
+        return offset < 0 ? -1 : BUILT_IN_COUNT + offset;
     }
 
     /**
@@ -150,7 +240,7 @@ public final class ModularCellTiers {
         int index = indexOf(tier);
         if (index < 0 || index >= Integer.SIZE) {
             throw new IllegalStateException(
-                    "Energy cell tier " + registryNameOf(tier) + " has id " + index
+                    "Energy cell tier " + registryNameOf(tier) + " resolved to bit " + index
                             + ", but the tier mask can only hold " + Integer.SIZE + " tiers");
         }
         return 1 << index;

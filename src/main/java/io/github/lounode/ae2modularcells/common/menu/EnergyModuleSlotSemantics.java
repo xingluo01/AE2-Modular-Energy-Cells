@@ -37,8 +37,16 @@ public final class EnergyModuleSlotSemantics {
     /** 全部带上的模块槽/组件语义总数（含运行时被隐藏的那些）。 */
     public static final int MAX_MODULE_SLOTS = MAX_ROWS * MODULES_PER_ROW;
 
-    /** 每个模块预留的组件格数：取三档里最多的那个，见 {@link ModularCellConstants#maxComponentSlots()}。 */
-    public static final int COMPONENT_SLOTS_PER_MODULE = ModularCellConstants.maxComponentSlots();
+    /**
+     * 每个模块预留的组件格数：取所有已注册等级里最多的那个。
+     *
+     * <p><b>是方法而不是常量</b>：它要读等级注册表，而注册表要到 {@code RegisterEvent} 才填好；本类的槽位语义
+     * 数组则在类加载期就建好，那一刻读到的是空表（旧写法会静默得到 0 槽）。AE2 的槽位本来就是在菜单 {@code init()}
+     * （运行期）才注册的，所以把求值推到那时是安全的。</p>
+     */
+    public static int componentSlotsPerModule() {
+        return ModularCellConstants.maxComponentSlots();
+    }
 
     /** 模块展示槽：一格一个模块，选中它不会拿走东西（只读）。 */
     public static final SlotSemantic[] MODULE = new SlotSemantic[MAX_MODULE_SLOTS];

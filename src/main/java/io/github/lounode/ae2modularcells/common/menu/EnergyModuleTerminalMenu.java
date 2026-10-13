@@ -59,7 +59,6 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     private static final int MODULES_PER_ROW = EnergyModuleSlotSemantics.MODULES_PER_ROW;
     private static final int MAX_ROWS = EnergyModuleSlotSemantics.MAX_ROWS;
     private static final int MAX_MODULE_SLOTS = EnergyModuleSlotSemantics.MAX_MODULE_SLOTS;
-    private static final int COMPONENTS_PER_MODULE = EnergyModuleSlotSemantics.COMPONENT_SLOTS_PER_MODULE;
 
     /** 客户端 → 服务端：把窗口滑到第几行。名字即协议，不许改。 */
     private static final String ACTION_SET_VISIBLE_ROWS = "setVisibleRows";
@@ -176,8 +175,10 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         // 而「终端样式」只改「哪几条带在用」——所以不能按当前条数建槽，否则切档又要重建菜单。
         for (int module = 0; module < MAX_MODULE_SLOTS; module++) {
             addSlot(new AppEngSlot(moduleDisplay, module), EnergyModuleSlotSemantics.MODULE[module]);
-            for (int part = 0; part < COMPONENTS_PER_MODULE; part++) {
-                addSlot(new AppEngSlot(moduleComponents, module * COMPONENTS_PER_MODULE + part),
+            // 每个模块的组件格数在运行期读：它取所有已注册等级的最大槽位数，而本类的静态初始化可能早于等级注册表填好。
+            int componentsPerModule = EnergyModuleSlotSemantics.componentSlotsPerModule();
+            for (int part = 0; part < componentsPerModule; part++) {
+                addSlot(new AppEngSlot(moduleComponents, module * componentsPerModule + part),
                         EnergyModuleSlotSemantics.COMPONENTS[module]);
             }
         }
@@ -572,7 +573,13 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      */
     private final class ModuleComponentInventory implements InternalInventory {
 
-        private final ItemStack[] clientMirror = new ItemStack[MAX_MODULE_SLOTS * COMPONENTS_PER_MODULE];
+        /** 每个模块预留的组件格数：运行期读（见 {@link EnergyModuleSlotSemantics#componentSlotsPerModule()}）。
+         *
+         * <p>不能写成 static 常量：它要读等级注册表，而类加载期注册表可能还是空的。字段声明在下面那几个数组
+         * 之前，保证初始化顺序上先有它。</p> */
+        private final int componentsPerModule = EnergyModuleSlotSemantics.componentSlotsPerModule();
+
+        private final ItemStack[] clientMirror = new ItemStack[MAX_MODULE_SLOTS * componentsPerModule];
 
         private ModuleComponentInventory() {
             Arrays.fill(this.clientMirror, ItemStack.EMPTY);
@@ -580,7 +587,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
 
         @Override
         public int size() {
-            return MAX_MODULE_SLOTS * COMPONENTS_PER_MODULE;
+            return MAX_MODULE_SLOTS * componentsPerModule;
         }
 
         @Override
@@ -630,11 +637,11 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         }
 
         private int moduleIndex(int slot) {
-            return slot / COMPONENTS_PER_MODULE;
+            return slot / componentsPerModule;
         }
 
         private int componentIndex(int slot) {
-            return slot % COMPONENTS_PER_MODULE;
+            return slot % componentsPerModule;
         }
     }
 

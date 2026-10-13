@@ -24,7 +24,7 @@ import io.github.lounode.ae2modularcells.common.ModularCellTiers;
  * 下面那条模块行上，屏幕按每一行自己的角色与它在窗口里的位置（首/中/末）去挑带——分组多少、每组几行都能自然
  * 表达，不必为「标题 + 槽」这种固定配对预留位置。</p>
  *
- * <p><b>分组口径</b>：每个等级一个组（用户口径），组的顺序固定为 {@link EnergyCellTier#values()} 的顺序；
+ * <p>分组口径：每个等级一个组（用户口径），组的顺序固定为等级的固定位号顺序（见 {@code ModularCellTiers#indexOf}）；
  * 组内模块保持结构遍历顺序（{@link MultiblockScanner.Layout#modulePos} 的 y → z → x），于是滑动窗口里看到的
  * 模块次序是稳定的——同一个模块不会因为重算而跳到别处。</p>
  *

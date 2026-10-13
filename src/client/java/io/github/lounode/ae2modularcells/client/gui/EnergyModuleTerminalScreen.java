@@ -596,12 +596,12 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
                     this.localRows.add(new TerminalRows.Row(null, first, count, indices));
                 }
             } else {
-                // 与 buildStructureSnapshot 对应的一字符制：a + 注册序号，? 表示这一块拿不到等级。
-                var values = ModularCellTiers.all();
+                // 与 buildStructureSnapshot 对应的一字符制：a + 固定位号，? 表示这一块拿不到等级。
+                // 用位号反查而不是下标取列表：位号是固定的（内置三档 0/1/2），而列表内容随已注册等级变化。
                 var tiers = new EnergyCellTier[snapshot.length()];
                 for (int index = 0; index < snapshot.length(); index++) {
                     int code = snapshot.charAt(index) - 97;
-                    tiers[index] = code >= 0 && code < values.size() ? values.get(code) : null;
+                    tiers[index] = code >= 0 ? ModularCellTiers.byIndex(code) : null;
                 }
                 TerminalRows.build(tiers.length, index -> tiers[index], this.localRows);
             }
