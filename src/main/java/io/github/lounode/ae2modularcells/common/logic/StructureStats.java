@@ -1,5 +1,6 @@
 package io.github.lounode.ae2modularcells.common.logic;
 
+import io.github.lounode.ae2modularcells.common.ComponentGain;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 
 /**
@@ -55,12 +56,11 @@ public record StructureStats(EnergyCellTier tier, int tierMask, int side, long t
     /**
      * 单块（未成型的独立元件）的账目：边长记 1，容量与速率按这一块自己的组件算。
      *
-     * @param componentCapacities 该块槽里已插入组件的容量值，见 {@link CellMath}
+     * @param slots 该块槽里已插入组件的贡献，见 {@link CellMath#moduleGains}
      */
-    public static StructureStats single(EnergyCellTier tier, long[] storageValues, long[] energyValues) {
-        return of(tier, tierBit(tier), 1,
-                CellMath.moduleCapacity(tier, storageValues),
-                CellMath.moduleTransferRate(tier, energyValues),
+    public static StructureStats single(EnergyCellTier tier, ComponentGain[] slots) {
+        var gains = CellMath.moduleGains(tier, slots);
+        return of(tier, tierBit(tier), 1, gains.capacity(), gains.transfer(),
                 tier.maxTransferRate(), tier.maxInputRate());
     }
 

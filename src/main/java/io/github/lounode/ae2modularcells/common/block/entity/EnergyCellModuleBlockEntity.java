@@ -39,6 +39,7 @@ import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.StructurePart;
 import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
+import io.github.lounode.ae2modularcells.common.ComponentGain;
 import io.github.lounode.ae2modularcells.common.StorageComponentTier;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage;
@@ -125,10 +126,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     private boolean beingRemoved;
 
-    /** 逐块汇总时复用的暂存数组（容量侧：存储组件值），见 {@link #componentCapacitiesScratch()}。 */
-    private final long[] capacityScratch = new long[ModularCellConstants.maxComponentSlots()];
-    /** 逐块汇总时复用的暂存数组（速率侧：能量存储组件值），见 {@link #energyComponentsScratch()}。 */
-    private final long[] energyScratch = new long[ModularCellConstants.maxComponentSlots()];
+    /** 逐块汇总时复用的暂存数组（组件贡献），见 {@link #componentGainsScratch()}。 */
+    private final ComponentGain[] gainScratch = new ComponentGain[ModularCellConstants.maxComponentSlots()];
 
     /**
      * 只进不出的 FE 面（懒建）。能力注册拿到的是它，不是 AE2 自己那份适配器。
@@ -227,7 +226,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // rebuildStructure() 是否碰巧改了账目——改了才 setChanged，没改就静默丢掉（退游戏后组件消失）。
         // 组件槽一个槽只放一件：容量折扣按「插了几件」算，堆叠会让公式失去意义。
         this.components = new AppEngInternalInventory(this, tier.componentSlots(), 1);
-        this.ownStats = StructureStats.single(tier, new long[0], new long[0]);
+        this.ownStats = StructureStats.single(tier, new ComponentGain[0]);
         // 构造期先按「未成型」登记：网格只在入网那一刻按这个旗标登记存储节点，旗标晚一步翻就摘不掉
         // （见 onReady 上方那段）。真正的值由 onReady 与结构变更时的 afterStructureReferenceChanged 重设。
         setInternalPublicPowerStorage(false);
@@ -634,7 +633,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             return this.ownStats;
         }
         var core = resolveCore();
-        return core != null ? core.ownStats : StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+        return core != null ? core.ownStats : StructureStats.single(tier, componentGainsScratch());
     }
 
     /**
@@ -1130,7 +1129,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
 
     /** 退化为独立元件：自己就是核心，账目按自己槽里的组件算。 */
     private void becomeStandalone() {
-        var single = StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+        var single = StructureStats.single(tier, componentGainsScratch());
         boolean wasCore = isCore();
         boolean changed = this.corePos != null || this.structureOrigin != null || !this.ownStats.equals(single);
         if (changed) {
@@ -1255,9 +1254,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
                 continue;
             }
             var moduleTier = module.tier();
-            // 两侧吃的是不同的组件：容量看存储组件，速率看能量存储组件（各管一条公式）。
-            capacity += CellMath.moduleCapacity(moduleTier, module.componentCapacitiesScratch());
-            rate += CellMath.moduleTransferRate(moduleTier, module.energyComponentsScratch());
+            // 一次算出这一块的容量与速率：两者共用同一个「插了几个组件」计数（见 CellMath#moduleGains）。
+            var gains = CellMath.moduleGains(moduleTier, module.componentGainsScratch());
+            capacity += gains.capacity();
+            rate += gains.transfer();
             rateCap += moduleTier.maxTransferRate();
             inputCap += moduleTier.maxInputRate();
             tierMask |= StructureStats.tierBit(moduleTier);
@@ -1364,7 +1364,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         boolean wasCore = isCore();
         BlockPos newCorePos = isCore ? null : corePos;
         BlockPos newOrigin = isCore ? origin : null;
-        var newStats = isCore ? stats : StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+        var newStats = isCore ? stats : StructureStats.single(tier, componentGainsScratch());
 
         // 行表缓存无条件作废（包括下面提前 return 的那条路径）：
         // 缓存键是账目快照，而“把两块方块的等级互换”这类改动可能让总容量/速率/边长/掩码恰好不变，
@@ -1647,32 +1647,21 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /**
-     * 本块槽里组件的容量值，直接喂给 {@link CellMath}。
+     * 本块槽里组件的贡献，直接喂给 {@link CellMath#moduleGains}。
      *
      * <p>复用同一块数组是为了不在逐块汇总时分配 4096 个小数组。返回值<b>只读且随时会被下一次调用覆盖</b>，
      * 调用方要么当场用完，要么自己复制一份。</p>
-     */
-    private long[] componentCapacitiesScratch() {
-        Arrays.fill(capacityScratch, 0L);
-        int slots = Math.min(components.size(), capacityScratch.length);
-        for (int slot = 0; slot < slots; slot++) {
-            capacityScratch[slot] = StorageComponents.capacityOf(components.getStackInSlot(slot));
-        }
-        return capacityScratch;
-    }
-
-    /**
-     * 同一批槽位里<b>能量存储组件</b>的值，喂给速率侧公式（见 {@code StorageComponents#energyOf}）。
      *
-     * <p>与 {@link #componentCapacitiesScratch()} 同一个契约：同一块数组、只读到下一次调用为止。</p>
+     * <p>空槽写 {@code null} 而不是零值贡献：{@code CellMath} 要靠「非 null」数出实际插了几个组件，而一个
+     * 真实的组件也可能两个维度都为 0。</p>
      */
-    private long[] energyComponentsScratch() {
-        Arrays.fill(energyScratch, 0L);
-        int slots = Math.min(components.size(), energyScratch.length);
+    private ComponentGain[] componentGainsScratch() {
+        Arrays.fill(gainScratch, null);
+        int slots = Math.min(components.size(), gainScratch.length);
         for (int slot = 0; slot < slots; slot++) {
-            energyScratch[slot] = StorageComponents.energyOf(components.getStackInSlot(slot));
+            gainScratch[slot] = StorageComponents.gainOf(components.getStackInSlot(slot));
         }
-        return energyScratch;
+        return gainScratch;
     }
 
     // ---- 渲染：连接状态 ----
@@ -1859,7 +1848,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // ——丢了会让重载世界之后的非核心方块在界面上退化为单块，直到下一次放置/破坏/组件变化才自愈。
         if (this.corePos != null) {
             this.structureOrigin = null;
-            this.ownStats = StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+            this.ownStats = StructureStats.single(tier, componentGainsScratch());
             setInternalMaxPower((double) this.ownStats.totalCapacity());
             return;
         }
@@ -1871,7 +1860,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         if (this.structureOrigin == null || side <= 1 || side > ModularCellConstants.MAX_SIDE
                 || capacity < 0L || rate < 0L) {
             this.structureOrigin = null;
-            this.ownStats = StructureStats.single(tier, componentCapacitiesScratch(), energyComponentsScratch());
+            this.ownStats = StructureStats.single(tier, componentGainsScratch());
             setInternalMaxPower((double) this.ownStats.totalCapacity());
             return;
         }

@@ -44,7 +44,7 @@ public enum EnergyCellTier {
         return id;
     }
 
-    /** 单模块基础容量 A（AE）：只作容量公式里的加数项，公式见 {@code CellMath.moduleCapacity}。 */
+    /** 单模块基础容量 A（AE）：只作容量公式里的加数项，公式见 {@code CellMath.moduleGains}。 */
     public long baseCapacity() {
         return baseCapacity;
     }

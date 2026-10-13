@@ -16,14 +16,17 @@ import io.github.lounode.ae2modularcells.integration.appflux.AppFluxComponents;
  *
  * <ul>
  * <li><b>接口路径</b>：AE2 本体与 MEGA Cells 的组件都实现了 AE2 的公开接口 {@link IStorageComponent}，
- * 只要那个物品实现了它，就认；值取 {@code getBytes(stack)}。</li>
+ * 只要那个物品实现了它，就认；值取 {@code getBytes(stack)}，这一路只贡献容量。</li>
  * <li><b>名字路径</b>：AppFlux 的 {@code core_1k ~ core_256m} <b>没有</b>实现那个接口，只能按注册名映射到
- * {@link StorageComponentTier}（见 {@code integration.appflux.AppFluxComponents}）。</li>
+ * {@link StorageComponentTier}（见 {@code integration.appflux.AppFluxComponents}），这一路只贡献速率。</li>
  * </ul>
  *
- * <p>为什么接口那一路不用一份自己的「物品 → 档位」映射表：那张表一写就与上游脱节——邻居加了档、改了数值，
+ * <p>两条路都产出 {@link ComponentGain}：现有两条路各自只给一个维度，但类型上允许两个维度同时有值——第三方的
+ * 「全能」组件（两样都给）接进来时不必再改公式。</p>
+ *
+ * <p>为什么接口那一路不用一份自己的「物品 → 数值」映射表：那张表一写就与上游脱节——邻居加了档、改了数值，
  * 本模组还按旧表算。名字路径只用于「确实拿不到接口」的邻居。{@link StorageComponentTier} 同时兼作档位与数值的
- * <b>对照表</b>（文档与平衡调整用），两条路都从它取值。</p>
+ * <b>对照表</b>（文档与平衡调整用），名字路径从它取值。</p>
  */
 public final class StorageComponents {
 
@@ -31,69 +34,58 @@ public final class StorageComponents {
     }
 
     /**
-     * 这个物品作为存储组件折算多少容量单位；不是组件、或不是存储物品时给 0。
+     * 这个物品作为存储组件的贡献；不是组件时给 {@code null}。
      *
-     * <p>返回 0 而不是抛异常：槽位里放什么由玩家决定，一件不属于任何档位的物品只应「不参与计算」，
+     * <p>给 {@code null} 而不是抛异常：槽位里放什么由玩家决定，一件不属于任何档位的物品只应「不参与计算」，
      * 不该把一次容量汇总炸掉。</p>
      */
-    public static long capacityOf(ItemStack stack) {
-        if (stack.isEmpty()) {
-            return 0L;
-        }
-        if (stack.getItem() instanceof IStorageComponent component && component.isStorageComponent(stack)) {
-            return Math.max(0, component.getBytes(stack));
-        }
-        // 只有「存储组件」进容量：AE2 的 1k~256k、MEGA Cells 的 cell_component_*（它们都实现了上面的接口）。
-        // AppFlux 的 core_* 属于「能量存储组件」，按需求只进输入速率那条，见 energyOf。
-        return 0L;
-    }
-
-    /**
-     * 这个物品作为「能量存储组件」折算多少能量单位，用在<b>输入速率</b>那条公式上；不是能量组件给 0。
-     *
-     * <p>目前只有 AppFlux 的 {@code core_1k ~ core_256m}（语言名就是 ME Energy Storage Component）：它没实现
-     * {@link IStorageComponent}，只能按注册名映射到 {@link StorageComponentTier} 那张表。</p>
-     */
-    public static long energyOf(ItemStack stack) {
-        if (stack.isEmpty()) {
-            return 0L;
-        }
-        Long energy = AppFluxComponents.energyOf(stack);
-        return energy != null ? Math.max(0L, energy) : 0L;
-    }
-
-    /** 这个物品能不能插进组件槽：两类组件都收（各管一条公式）。 */
-    public static boolean isComponent(ItemStack stack) {
-        return capacityOf(stack) > 0L || energyOf(stack) > 0L;
-    }
-
-    /**
-     * 这件物品是「容量类组件」而不是「能量存储组件」。
-     *
-     * <p>两类组件互斥（{@link #capacityOf} 只认实现 {@code IStorageComponent} 的物品，{@link #energyOf}
-     * 只认 AppFlux 的 {@code core_*}），所以一个布尔量就够描述种类。</p>
-     */
-    public static boolean isCapacityComponent(ItemStack stack) {
-        return capacityOf(stack) > 0L;
-    }
-
-    /**
-     * 这件物品对应的档位：容量类按它自己的值对齐 {@link StorageComponentTier}，能量存储组件由
-     * {@link AppFluxComponents} 按注册名映射；认不出来（陌生模组的组件、数值对不上任何一档）给 {@code null}。
-     *
-     * <p><b>为什么用一张表当两种组件的公共标尺</b>：两类组件各自的数值单位不同，但档位序列是同一套
-     * （{@code 1k < 4k < … < 256m}）。手势要判「更低档」与「同档另一种」，就需要这个公共标尺；
-     * 一旦认不出档位，宁可什么都不做，也不要把没数的组件推进槽位当作「升级」。</p>
-     */
     @Nullable
-    public static StorageComponentTier tierOf(ItemStack stack) {
+    public static ComponentGain gainOf(ItemStack stack) {
         if (stack.isEmpty()) {
             return null;
         }
-        long value = capacityOf(stack);
-        if (value <= 0L) {
-            value = energyOf(stack);
+        // 接口路径：AE2 本体与 MEGA Cells 的 cell_component_*（都实现了这个接口），只贡献容量。
+        if (stack.getItem() instanceof IStorageComponent component && component.isStorageComponent(stack)) {
+            long bytes = Math.max(0L, component.getBytes(stack));
+            return bytes > 0L ? new ComponentGain(bytes, 0L) : null;
         }
+        // 名字路径：拿不到接口的邻居（AppFlux 的 core_*，只贡献速率），按注册名映射到档位表。
+        Long energy = AppFluxComponents.energyOf(stack);
+        return energy != null && energy > 0L ? new ComponentGain(0L, energy) : null;
+    }
+
+    /** 这个物品能不能插进组件槽。 */
+    public static boolean isComponent(ItemStack stack) {
+        var gain = gainOf(stack);
+        return gain != null && !gain.isEmpty();
+    }
+
+    /**
+     * 这件物品是不是「容量类组件」。
+     *
+     * <p>手势用它区分「同一种」与「另一种」，而两类组件的数值单位不同、不能混着比。一个组件可以两维都给，
+     * 那种情况按容量类算——有容量就有可比的标尺。</p>
+     */
+    public static boolean isCapacityComponent(ItemStack stack) {
+        var gain = gainOf(stack);
+        return gain != null && gain.hasCapacity();
+    }
+
+    /**
+     * 这件物品对应的档位：按 {@link ComponentGain#magnitude()} 对齐 {@link StorageComponentTier}；认不出来
+     * （陌生模组的组件、数值对不上任何一档）给 {@code null}。
+     *
+     * <p><b>为什么用一张表当两种组件的公共标尺</b>：两类组件各自的数值单位不同，但档位序列是同一套
+     * （{@code 1k < 4k < … < 256m}）。手势要判「更低档」与「同档另一种」，就需要这个公共标尺；一旦认不出档位，
+     * 宁可什么都不做，也不要把没数的组件推进槽位当作「升级」。</p>
+     */
+    @Nullable
+    public static StorageComponentTier tierOf(ItemStack stack) {
+        var gain = gainOf(stack);
+        if (gain == null) {
+            return null;
+        }
+        long value = gain.magnitude();
         if (value <= 0L) {
             return null;
         }
