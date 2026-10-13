@@ -176,6 +176,12 @@ dependencies {
     // ——Jade 缺席时那个类不会被加载（注解扫描是 Jade 做的），所以不引任何类型名进总是加载的路径。
     compileOnly(libs.jade)
     clientLocalRuntime(libs.jade)
+
+    // KubeJS：只作编译期依赖（运行期由整合包提供）。integration/kubejs 那几类只被 KubeJS 自己按
+    // kubejs.plugins.txt 加载，所以本仓红线「邻居的类型名不得漏进总是加载的类」不破；
+    // 而 localRuntime 只为了让开发环境能实机验证插件真的被加载。
+    compileOnly(libs.kubejs)
+    localRuntime(libs.kubejs)
     // AE2 Omni Cells：混合类型存储元件（含 256m 档），用来验证槽位对第三方组件同样工作。
     localRuntime(libs.ae2.omni.cells)
     // Construction Wand - KOTS（建筑手杖）：只作测试 mod，实机验「用建筑手杖对着本模组方块延伸摆放」的观感。
@@ -221,6 +227,21 @@ repositories {
     maven {
         name = 'BlameJared'
         url = 'https://maven.blamejared.com'
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://maven.latvian.dev/releases' }
+        }
+        filter {
+            includeGroup 'dev.latvian.mods'
+            includeGroup 'dev.latvian.apps'
+        }
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://jitpack.io' }
+        }
+        filter { includeGroup 'com.github.rtyley' }
     }
     exclusiveContent {
         forRepository {

@@ -30,6 +30,11 @@ megacells = { module = "maven.modrinth:jjuIRIVr", version = "RPG4EriK" }
 appflux = { module = "maven.modrinth:appflux", version = "4x40hq9D" }
 jade = { module = "maven.modrinth:jade", version = "15.10.6+neoforge" }
 
+# KubeJS：MC 1.21.1 对应 2101 线（2100 是 1.21、2601 已到 26.1，对着错的线编译会因包路径与方法改名而失败）。
+# 只作编译期依赖，运行期由整合包提供；
+# 坐标由 maven.latvian.dev 提供（不是 CurseMaven）。
+kubejs = { module = "dev.latvian.mods:kubejs-neoforge", version = "2101.7.2-build.353" }
+
 # AppFlux 的必需前置之一（另两个是 AE2 与 GuideME）——Glodium 是 AE2 生态的共享 UI 库。
 glodium = { module = "io.github.glodblock:Glodium", version = "1.21-2.2-neoforge" }
 
