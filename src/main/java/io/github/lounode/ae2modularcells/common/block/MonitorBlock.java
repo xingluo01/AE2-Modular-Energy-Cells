@@ -97,6 +97,11 @@ public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBl
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!level.isClientSide() && !newState.is(state.getBlock())
                 && !(newState.getBlock() instanceof EnergyCellModuleBlock)) {
+            // 先把「正在拆除」立起来，再踢邻居：那一刻的结构重算会扫到这一格，而旧方块实体仍在场，
+            // 不拦住它就会把即将消失的监控器写回原位（实机反馈的「拆了会弹回来」）。
+            if (level.getBlockEntity(pos) instanceof MonitorBlockEntity monitor) {
+                monitor.markBeingRemoved();
+            }
             pokeNeighbours(level, pos);
         }
         super.onRemove(state, level, pos, newState, isMoving);

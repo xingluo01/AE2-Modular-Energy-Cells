@@ -24,10 +24,13 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 import appeng.api.AECapabilities;
+import appeng.block.AEBaseEntityBlock;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.block.BlankEnergyUnitBlock;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
+import io.github.lounode.ae2modularcells.common.block.entity.BlankEnergyUnitBlockEntity;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
@@ -90,20 +93,26 @@ public final class AEModularCellsRegistries {
     /**
      * 模块化空白能量单元：**只做合成中间体**。
      *
-     * <p>不储能、不成型、不接入 ME 网格（没有方块实体、不挂任何能力）——它是「待加工的一块壳」，拿它去合成
-     * 三档模块。因此这里用原版 {@link Block} 就够，不因为看着像模块就给它接上台账：一旦给它方块实体，玩家就
-     * 会问「为什么这一块拼进去不算数」。</p>
+     * <p>不储能、不成型、不接入 ME 网格，也不挂任何能量或物品能力——它是「待加工的一块壳」，拿它去合成
+     * 三档模块。</p>
      *
-     * <p>贴图口径（美术给的 {@code unit.png} + {@code unit_base.png}）：侧面用 {@code unit}、上下用
-     * {@code unit_base}。若美术后来只要单面，把模型换成 {@code cube_all} 指向 {@code unit} 即可。</p>
+     * <p><b>为什么要给它一个方块实体</b>：AE 的扳手拆除钩子（{@code appeng.hooks.WrenchHook}）只对
+     * {@code AEBaseBlockEntity} 的子类生效，想让这块壳也能 Shift+扳手快捷拆掉，就必须走 AE 的方块基类。
+     * 方块本身仍然只是一块壳，方块实体里没有任何数据（见 {@link BlankEnergyUnitBlockEntity}）。</p>
      */
-    public static final DeferredBlock<Block> BLANK_ENERGY_UNIT = BLOCKS.register("blank_energy_unit",
-            () -> new Block(BlockBehaviour.Properties.of()
-                    .strength(2.5F, 6.0F)
-                    .requiresCorrectToolForDrops()));
+    public static final DeferredBlock<BlankEnergyUnitBlock> BLANK_ENERGY_UNIT =
+            BLOCKS.register("blank_energy_unit",
+                    () -> new BlankEnergyUnitBlock(BlockBehaviour.Properties.of()
+                            .strength(2.5F, 6.0F)
+                            .requiresCorrectToolForDrops()));
 
     public static final DeferredItem<BlockItem> BLANK_ENERGY_UNIT_ITEM =
             ITEMS.registerSimpleBlockItem("blank_energy_unit", BLANK_ENERGY_UNIT);
+
+    /** 空白单元的方块实体：只为了让 AE 的扳手认它，里面没有任何数据。 */
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BlankEnergyUnitBlockEntity>> BLANK_ENERGY_UNIT_BLOCK_ENTITY =
+            BLOCK_ENTITIES.register("blank_energy_unit",
+                    () -> createBlankEnergyUnitBlockEntityType(BLANK_ENERGY_UNIT));
 
     /**
      * 两个监控器方块：能量监控器（正面显示储能百分比）与能量流量监控器（FE 输入流量与吞吐量）。
@@ -170,6 +179,17 @@ public final class AEModularCellsRegistries {
                 block.get()).build(null);
         holder.setPlain(type);
         block.get().setBlockEntity(EnergyCellModuleBlockEntity.class, type, null, null);
+        return type;
+    }
+
+    private static BlockEntityType<BlankEnergyUnitBlockEntity> createBlankEnergyUnitBlockEntityType(
+            DeferredBlock<BlankEnergyUnitBlock> block) {
+        AtomicReference<BlockEntityType<BlankEnergyUnitBlockEntity>> holder = new AtomicReference<>();
+        var type = BlockEntityType.Builder.of(
+                (pos, state) -> new BlankEnergyUnitBlockEntity(holder.get(), pos, state),
+                block.get()).build(null);
+        holder.setPlain(type);
+        block.get().setBlockEntity(BlankEnergyUnitBlockEntity.class, type, null, null);
         return type;
     }
 

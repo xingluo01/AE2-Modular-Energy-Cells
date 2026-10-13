@@ -33,7 +33,7 @@ import io.github.lounode.ae2modularcells.common.block.StructurePart;
  * <p><b>只在显示值真的变了才推</b>：{@link #applyReadout} 先做一次粗粒度比较（百分比取整到 1%、流量取整到
  * 64 AE/t），不变就直接返回。否则核心每 tick 都推一次，1 秒 20 个包只为了把小数点后几位改掉。</p>
  */
-public class MonitorBlockEntity extends BlockEntity {
+public class MonitorBlockEntity extends appeng.blockentity.AEBaseBlockEntity {
 
     private static final Logger LOG = LoggerFactory.getLogger(MonitorBlockEntity.class);
 
@@ -47,6 +47,20 @@ public class MonitorBlockEntity extends BlockEntity {
     /** 我所属结构的核心位置；未成型时为 null。 */
     @Nullable
     private BlockPos corePos;
+
+    /**
+     * 这一块正在被拆除（见 {@code MonitorBlock#onRemove}）。
+     *
+     * <p>拆除路径上它还会被 {@code clearStructure} 扫到，而那一刻**旧方块实体仍在场**（onRemove 先于方块被
+     * 移除）——那条路径会走 {@link #setCorePos} → {@link #updateFormedState}，把方块状态写回一个即将消失的位置。
+     * 实机现象就是「拆掉的监控器自己弹回来」。与模块侧的 beingRemoved 同一口径。</p>
+     */
+    private boolean beingRemoved;
+
+    /** 标记「正在被拆除」：之后所有写本地方块状态的路径都跳过。 */
+    public void markBeingRemoved() {
+        this.beingRemoved = true;
+    }
 
     /** 上一次告警时刻，见 {@link #WARN_INTERVAL_TICKS}。 */
     private long lastWarnTick = Long.MIN_VALUE;
@@ -183,9 +197,9 @@ public class MonitorBlockEntity extends BlockEntity {
         if (level == null || level.isClientSide()) {
             return;
         }
-        // 与模块方块同一套守卫（照 AE2 AEBaseBlockEntity#markForUpdate 的三重短路）：已被移除 / 区块不在场时
-        // 一律不写方块状态——写下去会把刚拆掉的监控器原样摆回去（AE2 在同类坑上有显式修复：PR #5567）。
-        if (isRemoved() || !level.hasChunkAt(worldPosition)) {
+        // 与模块方块同一套守卫（照 AE2 AEBaseBlockEntity#markForUpdate 的三重短路）：已被移除 / 正在被拆除 /
+        // 区块不在场时一律不写方块状态——写下去会把刚拆掉的监控器原样摆回去（AE2 在同类坑上有显式修复：PR #5567）。
+        if (isRemoved() || this.beingRemoved || !level.hasChunkAt(worldPosition)) {
             return;
         }
         var state = getBlockState();
@@ -224,8 +238,8 @@ public class MonitorBlockEntity extends BlockEntity {
     }
 
     @Override
-    public void loadAdditional(CompoundTag data, HolderLookup.Provider registries) {
-        super.loadAdditional(data, registries);
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.loadTag(data, registries);
         this.corePos = data.contains("core") ? BlockPos.of(data.getLong("core")) : null;
         this.storagePercent = data.getInt("percent");
         this.inputRate = data.getLong("input");
@@ -266,17 +280,5 @@ public class MonitorBlockEntity extends BlockEntity {
         return saveWithoutMetadata(registries);
     }
 
-    /**
-     * 主动推送用的包：<b>必须覆写</b>。
-     *
-     * <p>原版 {@code BlockEntity#getUpdatePacket()} 默认返回 {@code null}，而 {@code Level#sendBlockUpdated}
-     * 走的就是它——不覆写，方块实体数据一个字节也发不出去。症状很隐蔽：正面档位（方块状态）照常变，
-     * 百分比与吞吐却永远停在刚进区块时的值（新结构上就是 0%）。</p>
-     *
-     * <p>只覆写 {@link #getUpdateTag} 不够：那个是「区块发送时打包」用的，不是「主动推送」用的。</p>
-     */
-    @Override
-    public net.minecraft.network.protocol.Packet<net.minecraft.network.protocol.game.ClientGamePacketListener> getUpdatePacket() {
-        return net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket.create(this);
-    }
+    // getUpdatePacket 不在这里覆写：基类 AEBaseBlockEntity 已经实现（它给所有 AE 方块提供主动推送用的数据包）。
 }
