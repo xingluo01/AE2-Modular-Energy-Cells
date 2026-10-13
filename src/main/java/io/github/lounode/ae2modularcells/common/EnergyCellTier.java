@@ -64,7 +64,12 @@ public final class EnergyCellTier {
         return id;
     }
 
-    /** 完整注册名，例如 {@code ae2modularcells:basic}；尚未注册进注册表时给 {@code null}。 */
+    /**
+     * 完整注册名，例如 {@code ae2modularcells:basic}；尚未注册进注册表时给 {@code null}。
+     *
+     * <p>供日志与异常消息用：出错时标出「是哪一份注册」比短 id 更能定位。内部逻辑用 {@link #id()}——它是自带字段，
+     * 注册前后都可用。</p>
+     */
     @Nullable
     public ResourceLocation registryName() {
         return ModularCellTiers.registryNameOf(this);

@@ -173,10 +173,10 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
 
         // 槽位按最大条数一次性建完（不够时由屏幕隐藏）：槽位坐标写死在样式文档里、运行期不改，
         // 而「终端样式」只改「哪几条带在用」——所以不能按当前条数建槽，否则切档又要重建菜单。
+        // 组件格数在运行期读一次（取所有已注册等级的最大槽位数）：本类的静态初始化可能早于等级注册表填好。
+        int componentsPerModule = EnergyModuleSlotSemantics.componentSlotsPerModule();
         for (int module = 0; module < MAX_MODULE_SLOTS; module++) {
             addSlot(new AppEngSlot(moduleDisplay, module), EnergyModuleSlotSemantics.MODULE[module]);
-            // 每个模块的组件格数在运行期读：它取所有已注册等级的最大槽位数，而本类的静态初始化可能早于等级注册表填好。
-            int componentsPerModule = EnergyModuleSlotSemantics.componentSlotsPerModule();
             for (int part = 0; part < componentsPerModule; part++) {
                 addSlot(new AppEngSlot(moduleComponents, module * componentsPerModule + part),
                         EnergyModuleSlotSemantics.COMPONENTS[module]);
@@ -440,8 +440,8 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         // 一字符制下上界 = 4096 字符，离上限有 8 倍余量。
         var snapshot = new StringBuilder(tiers.length);
         for (var tier : tiers) {
-            // 一个等级一个字符（a 起）：这是两端配对的同步协议，位序与注册顺序一致，所以本模组三档仍是 a/b/c。
-            // 等级总数因此也受限于 26。
+            // 一个等级一个字符（a + 固定位号）：两端按同一张位号表配对。位号不依赖注册顺序，所以本模组三档
+            // 仍是 a/b/c。
             snapshot.append(tier == null ? (char) 63 : (char) (97 + ModularCellTiers.indexOf(tier)));
         }
         return snapshot.toString();

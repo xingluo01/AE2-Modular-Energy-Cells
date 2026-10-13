@@ -1,11 +1,15 @@
 package io.github.lounode.ae2modularcells.common;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
@@ -24,13 +28,18 @@ import io.github.lounode.ae2modularcells.AE2ModularCells;
  * 自建一个 {@code DeferredRegister}（用 {@link #TIER_REGISTRY_KEY} 作键、自己的 mod id 作命名空间），注册
  * 自己的等级；方块与方块实体都吃任意等级。配套的方块注册见 {@code ModularCellsApi}。</p>
  *
- * <p><b>位序是存档协议</b>：{@code StructureStats.tierMask} 是「第 N 位为 1 表示出现过第 N 档」的位掩码，而
- * 那个 N 就是等级在注册表里的<b>整数 id</b>（由注册顺序决定）。本模组的三档因此必须保持最先注册——{@code basic}
- * 在第 0 位、{@code dense} 第 1 位、{@code superdense} 第 2 位。改动这个顺序会让已有存档里的混拼结构认错档。
+ * <p><b>位序是存档协议，而位号是固定的</b>：{@code StructureStats.tierMask} 是「第 N 位为 1 表示出现过第 N 档」
+ * 的位掩码。那个 N 是 {@link #indexOf} 给出的<b>固定位号</b>：内置三档写死 0/1/2（与它们曾经是枚举时的
+ * {@code ordinal()} 一致，所以只装本模组的旧存档读回来仍认得对），其余等级从 3 起按注册名排序分配。
+ *
+ * <p><b>位号刻意不取注册表的整数 id</b>：那是「注册分配序」，由各模组的加载与事件触发次序决定，第三方先注册
+ * 就会夺走 0/1/2，使本模组三档变成 3/4/5——旧存档的混拼结构全部认错档。位号只依赖「注册了哪几个等级」，
+ * 因此同样的模组集合在任何一端都得到同样的位号。改动本类的三档声明顺序仍然是破坏性的：位号跟着变。
  * 掩码是 {@code int}，所以<b>等级总数上限是 32</b>（{@link #bitOf} 会挡住越界而不是产出错误的位）。</p>
  *
- * <p>不做 ID 同步（{@code sync(false)}）：两端各自加载同一批模组、按同一顺序注册，因此 id 天然一致；而等级
- * 本身也不走网络（客户端从方块取等级，见 {@code EnergyCellModuleBlockEntity}）。</p>
+ * <p>不做 ID 同步（{@code sync(false)}）：等级本身不走网络（客户端从方块取等级，见
+ * {@code EnergyCellModuleBlockEntity}），而按位号配对的同步（终端快照的单字符制）只要求两端注册同一批等级——
+ * 满足这个前提就一致，与注册顺序无关。<b>等级因而是双端都要满足的注册表</b>：只在服务端装的等级，客户端解不出那一档。</p>
  */
 public final class ModularCellTiers {
 
@@ -92,37 +101,49 @@ public final class ModularCellTiers {
     /** 内置三档的个数：第三方等级的固定位号从它开始。 */
     private static final int BUILT_IN_COUNT = 3;
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ModularCellTiers.class);
+
     /**
      * 启动期校验：把配置错误挡在启动阶段，而不是让它到运行期才爆。
      *
-     * <p>两件事要在注册表填完之后确认：① 每个等级的注册名与它自称的 {@code id} 一致（否则语言键与方块名会用
-     * 一个名字、而按注册名找不到，症状是 {@code byId} 命中但提示与同步对不上）；② 固定位号落进 {@code int}
-     * 掩码能装的位数内——位号超界的异常否则会抛在结构重算的半路上，把一台方块的问题放大成整段加载失败。</p>
+     * <p>三件事要在注册表填完之后确认：① 每个等级的注册名与它自称的 {@code id} 一致（否则语言键与方块名会用
+     * 一个名字、而按注册名找不到，症状是 {@code byId} 命中但提示与同步对不上）；② id 在全局唯一（id 是存档与
+     * 物品 id 的标识，两个等级共用一个 id 会让 {@code byId} 的结果取决于枚举顺序）；③ 固定位号落进 {@code int}
+     * 掩码能装的位数内。</p>
+     *
+     * <p>前两项抛异常（那是模组写错了，fail-fast 比让存档认错档好）；第三项只记 ERROR——位号越界说明等级太多，
+     * 属于「功能受限」而不是「数据会被写坏」，而且运行期的 {@link #bitOf} 已经会挡住它，不必把整个启动拦下来。</p>
      *
      * <p>调用时机：服务端启动（配置就绪、注册表已填）。客户端不单独校验——它的角色是按位号解码快照。
      */
     public static void validateRegistry() {
+        Set<String> seenIds = new HashSet<>();
         for (var tier : all()) {
             var key = REGISTRY.getKey(tier);
             if (key == null || !key.getPath().equals(tier.id())) {
                 throw new IllegalStateException("Energy cell tier registered as " + key
                         + " but reports id " + tier.id() + "; the two must match");
             }
+            if (!seenIds.add(tier.id())) {
+                throw new IllegalStateException("Energy cell tier id " + tier.id()
+                        + " is used by more than one tier; ids identify tiers in saves, so they must be unique");
+            }
             int index = indexOf(tier);
             if (index < 0 || index >= Integer.SIZE) {
-                throw new IllegalStateException("Energy cell tier " + key + " resolved to bit " + index
-                        + ", but the tier mask can only hold " + Integer.SIZE + " tiers");
+                LOGGER.error("Energy cell tier {} resolved to bit {}, beyond the {}-bit tier mask;"
+                        + " it will not be part of structure masks", key, index, Integer.SIZE);
             }
         }
     }
 
     /**
-     * 全量重扫：按已填好的注册表重新算位号。
+     * 第三方等级（非内置）按 id 排序，位号从它取。
      *
-     * <p>注册表填好之前 {@link #indexOf} 只能认内置三档（这是刻意的），所以第三方等级的位号要到注册完成之后
-     * 才算得出来；服务端启动时调一次，此后不变。</p>
+     * <p>排序键用 id 而不是注册表序：注册表在 {@code RegisterEvent} 填好之前是空的，那一刻这里返回空表、
+     * 第三方等级的位号按 -1 处理——这是刻意的（内置三档不受影响）；等服务端启动时
+     * {@link #validateRegistry()} 会在注册表填好之后再核一遍。</p>
      */
-    private static List<EnergyCellTier> externalTiersSortedByName() {
+    private static List<EnergyCellTier> externalTiersSortedById() {
         var builtIn = builtIn().values();
         return REGISTRY.stream()
                 .filter(tier -> !builtIn.contains(tier))
@@ -170,7 +191,10 @@ public final class ModularCellTiers {
         return tier.id();
     }
 
-    /** 等级的完整注册名，例如 {@code ae2modularcells:basic}；不在注册表里给 {@code null}。 */
+    /** 等级的完整注册名，例如 {@code ae2modularcells:basic}；不在注册表里给 {@code null}。
+     *
+     * <p>日志与异常消息用它（比短 id 更能定位是哪一份注册），内部逻辑用 {@link #idOf}——后者注册前后都可用。
+     */
     @Nullable
     public static ResourceLocation registryNameOf(EnergyCellTier tier) {
         return REGISTRY.getKey(tier);
@@ -191,13 +215,10 @@ public final class ModularCellTiers {
         if (builtIn >= 0) {
             return builtIn;
         }
-        // 只对“非内置”的等级排序，且不调 all()——all() 正是按本方法排序的，会无限递归。
-        List<EnergyCellTier> others = REGISTRY.stream()
-                .filter(candidate -> builtInIndex(candidate) < 0)
-                .sorted(Comparator.comparing(candidate -> registryNameOf(candidate).toString()))
-                .toList();
-        int rank = others.indexOf(tier);
-        return rank < 0 ? -1 : BUILT_IN_COUNT + rank;
+        // 不调 all()：all() 正是按本方法排序的，会无限递归。排序键用 id() 而不是注册名——后者可能为 null，
+        // 而 id() 由构造器保证非空且形如 resource path。
+        int offset = externalTiersSortedById().indexOf(tier);
+        return offset < 0 ? -1 : BUILT_IN_COUNT + offset;
     }
 
     /** 位号 → 等级；没有这一位给 {@code null}。与 {@link #indexOf} 互逆。 */
@@ -225,9 +246,7 @@ public final class ModularCellTiers {
         if (tier == SUPERDENSE_INSTANCE) {
             return 2;
         }
-        var externals = externalTiersSortedByName();
-        int offset = externals.indexOf(tier);
-        return offset < 0 ? -1 : BUILT_IN_COUNT + offset;
+        return -1;
     }
 
     /**
