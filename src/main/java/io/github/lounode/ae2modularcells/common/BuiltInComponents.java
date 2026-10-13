@@ -12,6 +12,11 @@ import net.minecraft.resources.ResourceLocation;
  * {@code FMLCommonSetupEvent} 那一步把清单写进配置——写成一次性的初始值。写完之后，哪个组件给多少值
  * 就完全以配置文件为准，改本类不会再影响已有存档。</p>
  *
+ * <p><b>所以调完这里的数值要让它在游戏里生效，得把配置文件删掉让它重新生成</b>（补入那一步只添加「配置里没有的
+ * id」，已存在的条目一律不动——这条是有意的：用户或整合包改过的值不该被悄悄覆盖）。不删的话症状是「代码改了、
+ * 游戏里没变」，而那很容易被当成代码没编进去。配置文件在存档侧的
+ * {@code serverconfig/<mod id>/cells.ini}（模板在 {@code config/<mod id>/server/world/default/cells.ini}）。</p>
+ *
  * <p>清单分两类来源：
  * <ul>
  *   <li><b>接口路径</b>（AE2 本体、MEGA Cells）：它们的组件实现了 AE2 的公开接口，但 id 形制规整，
@@ -32,36 +37,49 @@ public final class BuiltInComponents {
         /** 贡献容量（容量侧公式的 {@code S_i}）。 */
         CAPACITY,
         /** 贡献速率（速率侧公式的 {@code Sv_i}）。 */
-        TRANSFER
+        TRANSFER,
+        /** 两个维度都给（值取同一个档位值）。 */
+        BOTH
     }
 
     /**
      * 一条规则：某命名空间下、路径以列出的任一前缀开头的物品，按「去掉前缀后的后缀」查档位表。
      *
-     * @param namespace 物品 id 的命名空间
-     * @param prefixes  路径前缀；后缀必须能对上 {@link StorageComponentTier} 的某个 id 才算命中
+     * <p>前缀是拿来<b>拼出物品 id</b> 的（{@code 前缀 + 档位 id}），不是拿来匹配已有物品的，所以前缀之间
+     * 即使互为子串也不会互相干扰——{@code complex_omni_cell_component_1k} 与 {@code omni_cell_component_1k}
+     * 是两个不同的 id。识别那一侧按完整 id 查配置表，同样不做前缀匹配。</p>
+     *
+     * @param namespace           物品 id 的命名空间
+     * @param prefixes            路径前缀；后缀必须能对上 {@link StorageComponentTier} 的某个 id 才算命中
+     * @param channel             这份值算到哪个维度
+     * @param capacityMultiplier  容量修正倍率（公式里的 {@code m_i}）；{@code 1.0} 表示不修正
+     * @param transferMultiplier  速率修正倍率（公式里的 {@code mv_i}）；{@code 1.0} 表示不修正
      */
-    private record Rule(String namespace, List<String> prefixes, Channel channel) {
+    private record Rule(String namespace, List<String> prefixes, Channel channel,
+            double capacityMultiplier, double transferMultiplier) {
     }
 
     /**
      * 现有规则。加邻居时按命名空间字母序插入，便于对照。
      *
      * <p>OMNI Cells 的组件是纯 {@code new Item(...)}、不实现 AE2 的接口，也不自带任何数值——它的字节数只写在
-     * 元件上。档位后缀（{@code 1k} … {@code 256m}）与内置档位表逐项一致，所以能直接查表；它没有速率概念，
-     * 于是只贡献容量。</p>
+     * 元件上。档位后缀（{@code 1k} … {@code 256m}）与内置档位表逐项一致，所以能直接查表。</p>
+     *
+     * <p><b>它的三组组件值完全相同，靠修正倍率拉开</b>（用户口径）：全能 0.75、复杂全能 1.5、量子 3。
+     * 三个都两维都给——一个组件同时管容量与速率，但每种都打个折，所以行档越低折扣越狠。修正倍率落在配置里
+     * 也能被玩家改（第四、五段）。</p>
      *
      * <p><b>这条对应关系是按上游命名推断的</b>（组件本身不带数值，只能从「哪个组件合成哪个档位的元件」推出来），
      * 未经实机核对：若某档实际上不是表里那个值，用配置的 {@code componentGains} 逐条覆盖即可——配置优先级高于
      * 本表（见 {@code common.config.ModularCellConfig}）。</p>
      */
     private static final List<Rule> RULES = List.of(
-            // AppFlux 的 core_1k ~ core_256m：语言名是「ME Energy Storage Component」，只进速率侧。
-            new Rule("appflux", List.of("core_"), Channel.TRANSFER),
-            // AE2 OMNI Cells 的三组存储组件，只进容量侧。
-            new Rule("ae2omnicells",
-                    List.of("omni_cell_component_", "complex_omni_cell_component_", "quantum_omni_cell_component_"),
-                    Channel.CAPACITY));
+            // AppFlux 的 core_1k ~ core_256m：语言名是「ME Energy Storage Component」，只进速率侧，不修正。
+            new Rule("appflux", List.of("core_"), Channel.TRANSFER, 1.0D, 1.0D),
+            // AE2 OMNI Cells 的三组存储组件：两维都给，修正倍率依次拉开。
+            new Rule("ae2omnicells", List.of("omni_cell_component_"), Channel.BOTH, 0.75D, 0.75D),
+            new Rule("ae2omnicells", List.of("complex_omni_cell_component_"), Channel.BOTH, 1.5D, 1.5D),
+            new Rule("ae2omnicells", List.of("quantum_omni_cell_component_"), Channel.BOTH, 3.0D, 3.0D));
 
     private BuiltInComponents() {
     }
@@ -100,13 +118,15 @@ public final class BuiltInComponents {
             }
         }
         for (var rule : RULES) {
-            boolean capacitySide = rule.channel() == Channel.CAPACITY;
             for (String prefix : rule.prefixes()) {
                 for (var tier : StorageComponentTier.values()) {
-                    all.add(ComponentSpec.of(
+                    // 两维都给时值取同一个档位值：档位表只有一个字节数，速率侧历来也用它
+                    // （AppFlux 那条就是这么写的）。
+                    long capacity = rule.channel() == Channel.TRANSFER ? 0L : tier.capacity();
+                    long transfer = rule.channel() == Channel.CAPACITY ? 0L : tier.capacity();
+                    all.add(new ComponentSpec(
                             ResourceLocation.fromNamespaceAndPath(rule.namespace(), prefix + tier.id()),
-                            capacitySide ? tier.capacity() : 0L,
-                            capacitySide ? 0L : tier.capacity()));
+                            capacity, transfer, rule.capacityMultiplier(), rule.transferMultiplier()));
                 }
             }
         }

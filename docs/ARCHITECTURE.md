@@ -205,6 +205,7 @@
 |---|---|---|
 | MEGA Cells | 可选，**不引用其类** | 提供 `cell_component_1m ~ 256m`（1M ~ 256M MEGA Storage Component），是槽位高档组件的来源；它的 Superdense Energy Cell 也是等级数值的对照参考。按 mod id 探测即可 |
 | AppFlux（Applied Flux） | 可选，**不引用其类** | 提供 `core_1k ~ 256m`（1k ~ 256M ME Energy Storage Component），十档全覆盖。它的必需前置是 AE2 + GuideME + Glodium |
+| AE2 OMNI Cells | 可选，**不引用其类** | 三组组件（`omni_` / `complex_omni_` / `quantum_omni_cell_component_`）同时给容量与速率，修正倍率依次 0.75 / 1.5 / 3（用户口径）——它们值完全相同，靠修正拉开行档；三个数在配置里也能改 |
 | JEI / EMI | 可选，客户端 | 配方查看（三个等级的合成表）与将来的配方转移入口 |
 | Jade | 可选，客户端 | 显示结构等级、尺寸、当前/总容量（M7） |
 
