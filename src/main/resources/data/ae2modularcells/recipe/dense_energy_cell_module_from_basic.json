@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "A": { "item": "ae2modularcells:basic_energy_cell_module" },
+    "B": { "item": "ae2:calculation_processor" }
+  },
+  "pattern": [
+    "AAA",
+    "ABA",
+    "AAA"
+  ],
+  "result": { "count": 1, "id": "ae2modularcells:dense_energy_cell_module" }
+}

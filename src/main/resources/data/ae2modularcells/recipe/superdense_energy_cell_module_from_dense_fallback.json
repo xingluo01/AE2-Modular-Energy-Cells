@@ -1,0 +1,17 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:not", "value": { "type": "neoforge:mod_loaded", "modid": "megacells" } }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "A": { "item": "ae2modularcells:dense_energy_cell_module" },
+    "B": { "item": "ae2:calculation_processor" }
+  },
+  "pattern": [
+    "AAA",
+    "ABA",
+    "AAA"
+  ],
+  "result": { "count": 1, "id": "ae2modularcells:superdense_energy_cell_module" }
+}

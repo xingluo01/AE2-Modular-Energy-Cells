@@ -1,0 +1,8 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "ae2modularcells:flow_monitor" }
+  ],
+  "result": { "count": 1, "id": "ae2modularcells:energy_monitor" }
+}

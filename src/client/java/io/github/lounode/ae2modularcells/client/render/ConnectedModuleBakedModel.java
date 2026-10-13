@@ -283,14 +283,12 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         builder.addCube(x1, y1, z1, x2, y2, z2);
 
         // ② 档位覆盖层：每档一张 {tier}_energy_cell_light，用来区分「这一块原本是哪种模块」。
-        // 它一直画（否则玩家认不出模块种类），亮度随整段储能档位走；自发光，所以黑天也亮。
-        float intensity = 0.35F + 0.65F * fillIntensity(state);
+        // 恒定亮度（用户口径）：不再按整段储能调制——这一层表达的是「本块是哪一档模块」，与存了多少电无关。
+        // 自发光，所以黑天也亮。
         builder.setTexture(this.light);
         builder.setEmissiveMaterial(true);
-        builder.setColorRGB(intensity, intensity, intensity);
         builder.addCube(x1, y1, z1, x2, y2, z2);
-        // 这个 builder 是复用的：颜色与自发光标记都要归位，否则后面画的普通面也会被染色/满地发光。
-        builder.setColorRGB(1.0F, 1.0F, 1.0F);
+        // 这个 builder 是复用的：自发光标记要归位，否则后面画的普通面也会满地发光。
         builder.setEmissiveMaterial(false);
 
         return quads;
