@@ -26,12 +26,14 @@ Modular energy units store ME energy. Three tiers exist: **Basic** (200 kAE and 
 ## Forming a structure
 
 Place units next to each other to build a solid cube, between 3×3×3 and 16×16×16. Tiers can be
-mixed — every block contributes its own tier's capacity and transfer rate, and the caps follow the
-highest tier present. The whole cube then works as a single energy storage: one grid node, one energy
-pool, and it can be connected to your ME network on any face.
+mixed — every block contributes its own tier's capacity and transfer rate, and the rate and input caps
+are summed per block as well (not taken from whichever tier is highest). The whole cube then works as one
+energy storage: a single account and a single channel, connectable to your ME network on any face.
 
-A single unit, or a pile that does not form a cube, is not a structure — it keeps working on its
-own, but it does not offer the terminal.
+A single unit, or a pile that does not form a cube, is not a structure — it still stores AE, but
+that energy belongs to it alone: FE can charge it, while the ME network can neither connect to it nor
+draw from it. The moment a cube forms, every unit's stored energy flows into one pool shared by the
+structure. See the [Gain Algorithm](../gain-algorithm.md) for how capacity and rate are computed.
 
 ## Component slots
 

@@ -10,6 +10,7 @@
   "gui.ae2modularcells.input_rate": "Input:",
   "gui.ae2modularcells.storage.value": "%s/%s AE",
   "gui.ae2modularcells.input.value": "%s/%s AE/t",
+  "gui.ae2modularcells.monitor.average": "+%s AE/t",
   "jade.ae2modularcells.not_formed": "Not formed",
   "jade.ae2modularcells.formed": "Formed",
   "jade.ae2modularcells.module_size": "Module size: %s",

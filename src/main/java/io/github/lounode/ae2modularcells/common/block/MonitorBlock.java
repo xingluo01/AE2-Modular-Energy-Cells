@@ -32,9 +32,9 @@ import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
  * 所以拼进立方体不会破坏结构。读数（储能百分比 / FE 输入流量与吞吐量）由正面渲染从核心账目现取，本类只负责
  * 「是哪一种监控器」与方块实体类型的回填。</p>
  *
- * <p><b>一个口径要注意</b>：立方体最小角必须是储能模块（见
- * {@code EnergyCellModuleBlockEntity#rebuildStructure}）——最小角是监控器时整段不算成型，因为核心必须是一块
- * 有账目的储能模块。</p>
+ * <p><b>一个口径要注意</b>：核心只能是储能模块，监控器不持有账目——整段一块模块都没有（清一色监控器）
+ * 时不算成型。核心不必在最小角，它是「布局序第一块模块」（见
+ * {@code EnergyCellModuleBlockEntity#rescanStructure} 与 {@code firstModuleIn}）。</p>
  *
  * <p><b>没有 ticker</b>：方块实体类型两处传 null，与模块方块同一条红线。</p>
  */
@@ -82,25 +82,52 @@ public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBl
     }
 
     /**
-     * 破坏：结构少了一块，让四周的模块重扫。
+     * 破坏 / 替换：结构少了一块就让四周的模块重扫。
      *
-     * <p>与模块方块被拆同一条路径：邻块的检测会失败，于是整段自动回到独立元件（{@code clearStructure} 会清整段，
-     * 不只是清自己）。</p>
+     * <p>与模块方块被拆同一条路径：邻块的检测会失败，于是整段自动回到独立元件——那一步不在
+     * {@code onModuleRemoved}（它只服务于模块方块），而是邻块重扫走到
+     * {@code EnergyCellModuleBlockEntity#rebuildStructure} → {@code clearStructure}
+     * （清的是整段，不只是自己）。</p>
+     *
+     * <p><b>换成模块时不在这里扫</b>：真拆（变空气之类）必须当场踢一次，因为没有新方块会再调度；但换成储能模块时，
+     * 新方块自己的 {@code onPlace} 会铺一格 tick，下一 tick 那一次重扫才是对的——这里再扫一遍等于白烧一趟
+     * 整段遍历（16³ 就是 4096 格）。</p>
      */
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
-        if (!level.isClientSide() && !newState.is(state.getBlock())) {
+        if (!level.isClientSide() && !newState.is(state.getBlock())
+                && !(newState.getBlock() instanceof EnergyCellModuleBlock)) {
             pokeNeighbours(level, pos);
         }
         super.onRemove(state, level, pos, newState, isMoving);
     }
 
-    /** 把「这里变了」告诉四周的模块——重算入口只在模块方块实体上。 */
+    /**
+     * 把「这里变了」告诉四周的模块——重算入口只在模块方块实体上。
+     *
+     * <p><b>只踢一块，不是六块</b>：结构扫描是从「这一块」出发的连通体检测，一块成立就覆盖整段。
+     * 原来六个方向各扫一遍，等于把同一段结构算六遍——16³（4096 块）时这六倍是实打实的服务端卡顿
+     * （实测单 tick 落后 8~11 秒）。周围一块模块都没有（孤立放置的监控器）时什么都不做。</p>
+     */
     private static void pokeNeighbours(Level level, BlockPos pos) {
-        var cursor = new BlockPos.MutableBlockPos();
-        for (var direction : Direction.values()) {
-            EnergyCellModuleBlockEntity.rebuildAt(level, cursor.setWithOffset(pos, direction));
+        // 挑选口径与模块方块被拆时同一套：直接复用方块实体那边的实现，免得两份「找第一个模块邻居」漂移。
+        EnergyCellModuleBlockEntity.rebuildAtNeighbour(level, pos);
+    }
+
+    /**
+     * 邻居形状变化时让渲染重取连接状态。
+     *
+     * <p>与模块同一套：连接位算在服务端、随模型数据同步（见 {@code MonitorBlockEntity#getModelData}），
+     * 而 {@code updateShape} 是「邻居变了」反馈到本块渲染的入口——少了它，旁边摆上方块后监控器的侧面边框
+     * 不会跟着收（只有重新加载区块才会修）。</p>
+     */
+    @Override
+    public BlockState updateShape(BlockState state, Direction facing, BlockState facingState,
+            net.minecraft.world.level.LevelAccessor level, BlockPos pos, BlockPos facingPos) {
+        if (level.getBlockEntity(pos) instanceof MonitorBlockEntity monitor) {
+            monitor.requestModelDataUpdate();
         }
+        return super.updateShape(state, facing, facingState, level, pos, facingPos);
     }
 
     public Kind kind() {

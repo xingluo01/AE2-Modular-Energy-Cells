@@ -6,6 +6,7 @@ import snownee.jade.api.WailaPlugin;
 import snownee.jade.api.view.HideThingsExtensionProvider;
 
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
+import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 
 /**
  * Jade 适配：只做一件事——把 Jade <b>通用 FE 能量条</b>对本模组的方块挡掉。
@@ -33,6 +34,9 @@ public final class ModularCellsJadePlugin implements IWailaPlugin {
         // 本注册用默认优先级，而通用 FE 扩展的优先级排在其后（见 Jade 源码 CommonProxy#getServerExtensionData）。
         registration.registerEnergyStorage(HideThingsExtensionProvider.instance(),
                 EnergyCellModuleBlockEntity.class);
+        // 监控器也要挡（该方法一次只收一个类）：它自己不存能量，但把 FE 能力转交给核心（好让玩家把线接在
+        // 它上面），于是 Jade 的通用能量条会读到一个「整段容量 × AE→FE 换算比」的数，看起来就是实际的两倍。
+        registration.registerEnergyStorage(HideThingsExtensionProvider.instance(), MonitorBlockEntity.class);
         // 同理挡掉通用「物品存储」行：我们的 ItemHandler 是整段结构的组件槽视图（上界 12288 槽），
         // Jade 每趟只收 108 槽，结构一大那行就会「逐步增加」；且它不是玩家可用的容器。见 HideItemStorageProvider。
         registration.registerItemStorage(HideItemStorageProvider.instance(), EnergyCellModuleBlockEntity.class);
@@ -42,6 +46,8 @@ public final class ModularCellsJadePlugin implements IWailaPlugin {
     public void registerClient(snownee.jade.api.IWailaClientRegistration registration) {
         // Jade 的服务端与客户端是两套注册表：上面那条只负责在服务端给出「空组」，
         // 客户端这边也要有同 UID 的 provider，否则会留下「未知 UID / 找不到 client provider」的告警。
+        // 能量那条 Jade 自己有 universal 插件用了同一个 HideThings 实例，这里补上保持两侧对称。
+        registration.registerEnergyStorageClient(HideThingsExtensionProvider.instance());
         registration.registerItemStorageClient(HideItemStorageProvider.instance());
     }
 }

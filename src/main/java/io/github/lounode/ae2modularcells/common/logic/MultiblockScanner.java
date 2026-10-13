@@ -83,19 +83,24 @@ public final class MultiblockScanner {
         }
     }
 
-    /** 检测结果。{@link Status#FORMED} 之外 {@link #layout()} 为 null。 */
-    public record Result(Status status, @Nullable Layout layout) {
+    /**
+     * 检测结果。{@link Status#FORMED} 之外 {@link #layout()} 为 null。
+     *
+     * <p>{@link #detail()} 是「为什么不成型」的人话说明，<b>只给日志看</b>——调用方的行为不看它。
+     * 没有它，「结构自己散了」这条路径没有任何异常可拓，排查只能靠盯方块发呆。</p>
+     */
+    public record Result(Status status, @Nullable Layout layout, String detail) {
 
         public static Result formed(Layout layout) {
-            return new Result(Status.FORMED, layout);
+            return new Result(Status.FORMED, layout, "成立 " + layout.side() + "³ @ " + layout.origin());
         }
 
-        public static Result notFormed() {
-            return new Result(Status.NOT_FORMED, null);
+        public static Result notFormed(String detail) {
+            return new Result(Status.NOT_FORMED, null, detail);
         }
 
-        public static Result indeterminate() {
-            return new Result(Status.INDETERMINATE, null);
+        public static Result indeterminate(String detail) {
+            return new Result(Status.INDETERMINATE, null, detail);
         }
 
         public boolean isFormed() {
@@ -115,7 +120,7 @@ public final class MultiblockScanner {
      */
     public static Result scan(Level level, BlockPos start) {
         if (!isStructurePart(level.getBlockState(start))) {
-            return Result.notFormed();
+            return Result.notFormed("起点不是结构件：" + level.getBlockState(start).getBlock());
         }
 
         // 访问位图按「相对起点的偏移」索引，窗口固定为 ±REACH。两块定长数组就是这个检测的全部临时对象。
@@ -146,7 +151,7 @@ public final class MultiblockScanner {
 
             if (count > ModularCellConstants.MAX_BLOCKS) {
                 // 已经超过最大结构的方块数，这一片无论如何都不成立——是确定的结论，不是「判不了」。
-                return Result.notFormed();
+                return Result.notFormed("连通块已超过 " + ModularCellConstants.MAX_BLOCKS + " 块上限");
             }
 
             for (var direction : DIRECTIONS) {
@@ -161,10 +166,10 @@ public final class MultiblockScanner {
                 if (Math.abs(nx) > REACH || Math.abs(ny) > REACH || Math.abs(nz) > REACH) {
                     cursor.set(start.getX() + nx, start.getY() + ny, start.getZ() + nz);
                     if (!level.isLoaded(cursor)) {
-                        return Result.indeterminate();
+                        return Result.indeterminate("越界方向有未加载区块：偏移 (" + nx + "," + ny + "," + nz + ")");
                     }
                     if (isStructurePart(level.getBlockState(cursor))) {
-                        return Result.notFormed();
+                        return Result.notFormed("边长超出上限：偏移 (" + nx + "," + ny + "," + nz + ") 处还有结构件");
                     }
                     continue;
                 }
@@ -177,7 +182,7 @@ public final class MultiblockScanner {
                 // 邻居没加载就读不到它的方块状态。这时不能当它是空气（会得出一个假的实心立方体），
                 // 也不能当它「不是模块」（会把一段跨区块的结构判没）——只能承认判不了。
                 if (!level.isLoaded(cursor)) {
-                    return Result.indeterminate();
+                    return Result.indeterminate("相邻区块未加载：偏移 (" + nx + "," + ny + "," + nz + ")");
                 }
                 if (!isStructurePart(level.getBlockState(cursor))) {
                     continue;
@@ -203,14 +208,16 @@ public final class MultiblockScanner {
         int sideY = maxY - minY + 1;
         int sideZ = maxZ - minZ + 1;
         if (sideX != sideY || sideY != sideZ) {
-            return Result.notFormed();
+            return Result.notFormed("包围盒不是立方体：" + sideX + "×" + sideY + "×" + sideZ
+                    + "，连通 " + count + " 块");
         }
         if (!ModularCellConstants.isValidSide(sideX)) {
-            return Result.notFormed();
+            return Result.notFormed("边长不合法：" + sideX);
         }
         // 连通体方块数 == 边长³ 等价于「实心」：连通体已经把包围盒填满了，否则数量对不上。
         if (count != sideX * sideX * sideX) {
-            return Result.notFormed();
+            return Result.notFormed("不实心：连通 " + count + " 块，而 " + sideX + "³ = "
+                    + (sideX * sideX * sideX));
         }
 
         return Result.formed(new Layout(

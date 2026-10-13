@@ -252,6 +252,10 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         }
         this.visibleRows = clamped;
         this.rowOffset = Math.max(0, Math.min(this.rowOffset, Math.max(0, this.totalRows - 1)));
+        // 条数变了，但去抖条件只看 rowOffset 与账目快照，看不出这次变化——不显式作废，syncFromHost 会跳过
+        // fillWindow，新露出的那几条带就只有底图没内容（同时客户端按 bandMark 把它们的槽隐藏，表现为「多出来
+        // 的行是空格子、还装不进东西」）。置空快照 = 按本类首拍的老惯例，强制下一次 syncFromHost 真填一次。
+        this.lastRefreshedStats = null;
         if (!this.host.isCoreChunkLoaded()) {
             // 同上：条数先记下，核心区块回来后再重填窗口。
             return;

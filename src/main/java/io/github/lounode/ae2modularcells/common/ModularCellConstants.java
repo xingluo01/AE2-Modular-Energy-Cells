@@ -31,19 +31,27 @@ public final class ModularCellConstants {
     /**
      * 存储组件容量折扣 k：每个组件往模块容量里贡献 {@code S_i × k}。
      *
-     * <p>{@link #COMPONENT_DISCOUNT_MIN} ~ {@link #COMPONENT_DISCOUNT_MAX} 是允许的配置区间，默认取
-     * 中值 0.005——即一个 256m 组件（268 435 456 AE）折算 1 342 177 AE，约等于六台半基础模块。</p>
+     * <p>取值口径是「对得起堆叠」：一整座 16³ 最多塞进 {@code 4096 × 3 = 12288} 个 256m 组件，组件总值
+     * 3.30 TAE。取 k = 0.2、b = 2.0 时——超密 16³ 落在 4.98 TAE（组件堆叠的 1.51 倍）、致密 16³
+     * （2 槽、8192 个组件、堆叠 2.20 TAE）落在 2.23 TAE（1.01 倍）。推导见指南的增益算法页。</p>
+     *
+     * <p>一个 256m 组件（268 435 456 AE）在 k = 0.2 下折算 53 687 091 AE，约等于 268 台基础模块。</p>
      */
-    public static final double COMPONENT_DISCOUNT = 0.005D;
+    public static final double COMPONENT_DISCOUNT = 0.2D;
 
     /** 组件容量折扣的配置下限。 */
     public static final double COMPONENT_DISCOUNT_MIN = 0.001D;
 
-    /** 组件容量折扣的配置上限。 */
-    public static final double COMPONENT_DISCOUNT_MAX = 0.01D;
+    /**
+     * 组件容量折扣的候选上限。
+     *
+     * <p>目前没有配置系统读这三个区间常量——它们是给「做成可配置项」预留的边界。真接上配置时记得让上限
+     * 盖得住 {@link #COMPONENT_DISCOUNT}，否则默认值会被夹回去。</p>
+     */
+    public static final double COMPONENT_DISCOUNT_MAX = 0.5D;
 
-    /** 组件数量加成 b：装满 C 个组件时，容量乘 {@code (1 + b × C)}，故基础/致密/超密最多 ×1.5 / ×2.0 / ×2.5。 */
-    public static final double CAPACITY_COUNT_BONUS = 0.5D;
+    /** 组件数量加成 b：装满 C 个组件时，容量乘 {@code (1 + b × C)}，故基础/致密/超密最多 ×3 / ×5 / ×7。 */
+    public static final double CAPACITY_COUNT_BONUS = 2.0D;
 
     // ---- 速率公式：D_v = (V + Σ Sv_i × kv) × (1 + bv × C) ----
 

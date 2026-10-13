@@ -242,5 +242,12 @@ public final class AEModularCellsRegistries {
             event.registerBlockEntity(AECapabilities.IN_WORLD_GRID_NODE_HOST, type.get(),
                     (blockEntity, context) -> blockEntity);
         }
+        // 监控器也得有 FE 面：玩家会把线接在整段的任意一块上，而监控器自己没有能量逻辑，收到的原样转交核心
+        // （见 MonitorBlockEntity#getFeInput）。少这一条，接在监控器上的线就是死的——外在表现是「整段一直是 0%」。
+        // 只给能量这一条：监控器没有组件槽（不能装存储组件）、也没有自己的网格节点（整段仍只有一个节点）。
+        for (var type : MONITOR_BLOCK_ENTITIES.values()) {
+            event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, type.get(),
+                    (blockEntity, side) -> blockEntity.getFeInput(side));
+        }
     }
 }

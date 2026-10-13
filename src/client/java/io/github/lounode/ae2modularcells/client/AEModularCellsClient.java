@@ -37,6 +37,25 @@ public final class AEModularCellsClient {
         modBus.addListener(this::registerScreens);
         modBus.addListener(this::installConnectedModels);
         modBus.addListener(this::registerRenderers);
+        modBus.addListener(this::registerBlockColors);
+    }
+
+    /**
+     * 监控器正面三层的颜色。
+     *
+     * <p>走原版 tint 而不是顶点色：方块模型这条管线上 BakedQuad 自带的顶点色会被渲染器的传参盖掉（实测就是
+     * 灰白面板），而 tintIndex≥0 的 quad 会向这里要颜色。颜色取 AE2 默认涂色（fluix 紫）的三档变体——
+     * 它的三张 {@code monitor_light_*} 是灰阶互补图层，本来就配这三个亮度层次用（与 {@code ColorableBlockEntityBlockColor}
+     * 同一条路）。tintIndex 由 {@code MonitorBakedModel.drawFrontLight} 打在正面三层的 quad 上。</p>
+     */
+    private void registerBlockColors(net.neoforged.neoforge.client.event.RegisterColorHandlersEvent.Block event) {
+        var color = appeng.api.util.AEColor.TRANSPARENT;
+        event.register((state, level, pos, tintIndex) -> switch (tintIndex) {
+            case 1 -> color.blackVariant;
+            case 2 -> color.mediumVariant;
+            case 3 -> color.whiteVariant;
+            default -> -1;
+        }, AEModularCellsRegistries.ENERGY_MONITOR.get(), AEModularCellsRegistries.FLOW_MONITOR.get());
     }
 
     private void registerScreens(RegisterMenuScreensEvent event) {

@@ -203,7 +203,8 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!level.isClientSide() && !newState.is(state.getBlock())) {
-            EnergyCellModuleBlockEntity.onModuleRemoved(level, pos);
+            // newState 一起交出去：新方块仍是结构件（模块换监控器之类）时整段并没有缺块，不该解散。
+            EnergyCellModuleBlockEntity.onModuleRemoved(level, pos, newState);
         }
         // 父类负责把方块实体里的组件掉出来（AEBaseEntityBlock#onRemove → addAdditionalDrops）。
         super.onRemove(state, level, pos, newState, isMoving);

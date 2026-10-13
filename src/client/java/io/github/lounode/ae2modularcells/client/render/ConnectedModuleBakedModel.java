@@ -41,7 +41,6 @@ import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleModelData;
-import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleModelData;
 
 /**
  * 连接状态渲染：照 AE2 合成单元（crafting cube）那套规则画边框与内面。
@@ -67,10 +66,10 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
     private static final ChunkRenderTypeSet RENDER_TYPES = ChunkRenderTypeSet.of(RenderType.CUTOUT);
 
     /** 边框宽度：内面往里收的量，与 AE2 合成单元同值。 */
-    private static final float RING = 3.0F;
+    static final float RING = 3.0F;
 
     /** 方块外沿尺寸（单位与模型坐标系一致：16 = 一整格）。 */
-    private static final float OUTER = 16.0F;
+    static final float OUTER = 16.0F;
 
     /**
      * 内面在没有连接的方向上收进约 3px，把那一圈让给边框贴图。
@@ -78,10 +77,10 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * <p>取 2.99 / 13.01 而不是 3 / 13，与上游一致：这 0.01 的尾巴是避让共面（内面边缘正好压在条纹内边）用的。
      * 取值照抄 {@code CraftingCubeBakedModel#getQuads}，不要“四舍五入”成整数。</p>
      */
-    private static final float INNER_MIN = 2.99F;
+    static final float INNER_MIN = 2.99F;
 
     /** 内面在无连接方向上的外沿，见 {@link #INNER_MIN}。 */
-    private static final float INNER_MAX = 13.01F;
+    static final float INNER_MAX = 13.01F;
 
     private final TextureAtlasSprite face;
     private final TextureAtlasSprite ringCorner;
@@ -135,7 +134,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * 不过滤掉它的话，物品会拿到这份模型，而这份模型不出无朝向的面（{@code side == null} 返回空），物品会变透明。</p>
      *
      * <p>替换是按 id 全量匹配：{@code fill=0..4} 五个状态变体都会被换成这一份——这是刻意的，这份模型自身无状态
-     * （每次 {@code getQuads} 现建 builder，档位从方块状态现读）。资源重载日志里应当是「已替换 15 个」。</p>
+     * （每次 {@code getQuads} 现建 builder，档位从方块状态现读）。计数会把三档模块与两个监控器的状态变体
+     * 一起算进去，所以资源重载日志里的数字随方块数变化，不要拿它当固定值对。</p>
      */
     public static void install(ModelEvent.ModifyBakingResult event) {
         Map<ResourceLocation, net.minecraft.client.resources.model.BakedModel> byBlockId = new HashMap<>();
@@ -156,14 +156,19 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             sprite(event, "unit")));
         }
 
-        // 两个监控器：正面面板 + 三档覆盖层，见 MonitorBakedModel（照 AE2 合成监控器的资产口径）。
+        // 两个监控器：正面面板 + 三层光板，五个侧面按连接收边（与模块同一套 ring 贴图）。
+        // 侧面底色由用户指定：未成型 unit、成型 unit_base；正面两张也是用户指定的，别按上游口径自调。
         var monitorModel = new MonitorBakedModel(
+                sprite(event, "unit_base"),
                 sprite(event, "unit"),
+                sprite(event, "monitor"),
                 sprite(event, "monitor_base"),
+                sprite(event, "ring_corner"),
+                sprite(event, "ring_side_hor"),
+                sprite(event, "ring_side_ver"),
                 sprite(event, "monitor_light_dark"),
                 sprite(event, "monitor_light_medium"),
-                sprite(event, "monitor_light_bright"),
-                sprite(event, "monitor"));
+                sprite(event, "monitor_light_bright"));
         byBlockId.put(ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "energy_monitor"), monitorModel);
         byBlockId.put(ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "flow_monitor"), monitorModel);
 
@@ -243,8 +248,8 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
             return quads;
         }
 
-        addCornerCaps(builder, connections, side);
-        addRingStrips(builder, connections, side);
+        addCornerCaps(builder, connections, side, this.ringCorner);
+        addRingStrips(builder, connections, side, this.ringHor, this.ringVer);
 
         // 内面：没有连接的方向收进 3px，有连接的方向铺到边界（铺到正 16，与上游同值：
         // 两块的内面本来就会在接缝处共面，上游也没有为此向外多铺）；当前这一轴本来就占满整个面。
@@ -292,8 +297,9 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
     }
 
     /** 角贴图只用在「三条面都没有连接」的角上。 */
-    private void addCornerCaps(CubeBuilder builder, EnumSet<Direction> connections, Direction side) {
-        builder.setTexture(this.ringCorner);
+    static void addCornerCaps(CubeBuilder builder, EnumSet<Direction> connections, Direction side,
+            TextureAtlasSprite ringCorner) {
+        builder.setTexture(ringCorner);
         for (var y : new Direction[] { Direction.UP, Direction.DOWN }) {
             for (var x : new Direction[] { Direction.EAST, Direction.WEST }) {
                 for (var z : new Direction[] { Direction.NORTH, Direction.SOUTH }) {
@@ -320,12 +326,13 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      * <p>条纹贴图分工：面内横向的条用 {@code *_ring_hor}，纵向的用 {@code *_ring_ver}——与 AE2 合成单元同一
      * 套取值口径，贴图可以照那套资源的结构画。</p>
      */
-    private void addRingStrips(CubeBuilder builder, EnumSet<Direction> connections, Direction side) {
+    static void addRingStrips(CubeBuilder builder, EnumSet<Direction> connections, Direction side,
+            TextureAtlasSprite ringHor, TextureAtlasSprite ringVer) {
         for (var direction : Direction.values()) {
             if (direction == side || direction == side.getOpposite()) {
                 continue;
             }
-            builder.setTexture(isVerticalStrip(side, direction) ? this.ringVer : this.ringHor);
+            builder.setTexture(isVerticalStrip(side, direction) ? ringVer : ringHor);
 
             // 有连接的那一侧，内面已经铺到边界，不需要再补条纹。
             if (connections.contains(direction)) {
@@ -386,8 +393,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
     }
 
     /** 在 {@code side} 这个面上，条纹沿哪个方向延伸——决定取横贴图还是竖贴图。与 AE2 合成单元同判据。 */
-    private static boolean isVerticalStrip(Direction side, Direction direction) {
-        if (side.getAxis() != Direction.Axis.Y
+    private static boolean isVerticalStrip(Direction side, Direction direction) {        if (side.getAxis() != Direction.Axis.Y
                 && (direction == Direction.NORTH || direction == Direction.EAST || direction == Direction.WEST
                         || direction == Direction.SOUTH)) {
             return true;
@@ -410,7 +416,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         return a;
     }
 
-    private static EnumSet<Direction> getConnections(ModelData modelData) {
+    static EnumSet<Direction> getConnections(ModelData modelData) {
         if (modelData.has(EnergyCellModuleModelData.CONNECTIONS)) {
             var connections = modelData.get(EnergyCellModuleModelData.CONNECTIONS);
             if (connections != null) {

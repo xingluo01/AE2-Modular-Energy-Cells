@@ -10,6 +10,7 @@
   "gui.ae2modularcells.input_rate": "输入速率：",
   "gui.ae2modularcells.storage.value": "%s/%s AE",
   "gui.ae2modularcells.input.value": "%s/%s AE/t",
+  "gui.ae2modularcells.monitor.average": "+%s AE/t",
   "jade.ae2modularcells.not_formed": "未成型",
   "jade.ae2modularcells.formed": "已成型",
   "jade.ae2modularcells.module_size": "模块尺寸：%s",
