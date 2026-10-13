@@ -86,12 +86,12 @@ public final class AEModularCellsRegistries {
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN_TAB = CREATIVE_TABS.register("main",
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup." + AE2ModularCells.MOD_ID))
-                    .icon(() -> new ItemStack(moduleItem(ModularCellTiers.BASIC.get()).get()))
+                    .icon(() -> new ItemStack(moduleItem(ModularCellTiers.BASIC.get())))
                     .displayItems((parameters, output) -> {
                         // 只收本模组自己注册的：第三方把自己的方块放进自己的标签页。
                         for (var set : ModularCellsApi.allModuleBlockSets()) {
-                            if (AE2ModularCells.MOD_ID.equals(set.block().getId().getNamespace())) {
-                                output.accept(set.item().get());
+                            if (AE2ModularCells.MOD_ID.equals(set.id().getNamespace())) {
+                                output.accept(set.item());
                             }
                         }
                         // 必须写全限定名：本字段的声明在下面，而 Java 不允许静态字段初始化表达式里用简单名「向前引用」
@@ -216,10 +216,10 @@ public final class AEModularCellsRegistries {
     }
 
     /**
-     * 本模组自己的三个套装，按等级查。
+     * 按等级找方块套装（实例制）。
      *
-     * <p>查全局清单而不是私存一张表：第三方若注册在同一个等级上，也能查到，而「给这个等级的方块」本来就只
-     * 应该有一个答案。</p>
+     * <p>查全局清单而不是私存一张表：脚本与第三方注册在同一个等级上的套装也在这里，而「给这个等级的方块」
+     * 本来就只应该有一个答案。</p>
      */
     @Nullable
     public static ModuleBlockSet moduleBlockSet(EnergyCellTier tier) {
@@ -232,20 +232,19 @@ public final class AEModularCellsRegistries {
     }
 
     @Nullable
-    public static DeferredBlock<EnergyCellModuleBlock> moduleBlock(EnergyCellTier tier) {
+    public static EnergyCellModuleBlock moduleBlock(EnergyCellTier tier) {
         var set = moduleBlockSet(tier);
         return set == null ? null : set.block();
     }
 
     @Nullable
-    public static DeferredItem<BlockItem> moduleItem(EnergyCellTier tier) {
+    public static BlockItem moduleItem(EnergyCellTier tier) {
         var set = moduleBlockSet(tier);
         return set == null ? null : set.item();
     }
 
     @Nullable
-    public static DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyCellModuleBlockEntity>> moduleBlockEntity(
-            EnergyCellTier tier) {
+    public static BlockEntityType<EnergyCellModuleBlockEntity> moduleBlockEntity(EnergyCellTier tier) {
         var set = moduleBlockSet(tier);
         return set == null ? null : set.blockEntity();
     }
@@ -277,11 +276,11 @@ public final class AEModularCellsRegistries {
         // 本模组三档与第三方注册的模块方块一起走这一遍。能力是**按方块实体类型**注册的，漏掉谁的套装，
         // 谁那块就既没有 FE 面、也没有组件槽的物品面，且接不上线缆——而且一条报错都不会有。
         for (var set : ModularCellsApi.allModuleBlockSets()) {
-            var type = set.blockEntity().get();
+            var type = set.blockEntity();
             // 代表物品：AE2 用它做「名称回退」与「导出设置」的来源。不注册时 getItemFromBlockEntity() 落到
             // Items.AIR——扳手拆下来的方块，物品提示里来源会显示成 Air（那把扳手流程正好要用 exportSettings）。
             // 时机必须晚于物品注册：BE 类型注册的 lambda 里 DeferredItem 还没注册，.get() 会抛。
-            AEBaseBlockEntity.registerBlockEntityItem(type, set.item().get());
+            AEBaseBlockEntity.registerBlockEntityItem(type, set.item());
             event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, type,
                     (blockEntity, side) -> blockEntity.getFeInput(side));
             // 组件槽对自动化的面：AE2 的导出/输出总线找目标方块就是查这个能力

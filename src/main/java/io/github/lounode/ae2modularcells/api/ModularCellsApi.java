@@ -9,6 +9,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -35,11 +36,14 @@ import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlo
  *         TIERS.register("my_tier", () -> new EnergyCellTier("my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L));
  *
  * // 2) 注册方块套装（方块 + 方块物品 + 方块实体类型）
- * public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellModule(
+ * public static final DeferredModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellModule(
  *         BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER.get());
  * }</pre>
  *
  * <p>两件注册器都要挂到模组总线上（{@code TIERS.register(modBus)} 等），本模组不做代管。</p>
+ *
+ * <p>脚本侧（KubeJS）走 {@link #registerModuleBlockSet}：那条路不用 {@code DeferredRegister}，直接交实例。
+ * 两条路最终汇进同一张清单 {@link #allModuleBlockSets()}，后续处理（能力、模型、创造页）完全一样。</p>
  *
  * <h2>这个入口替你做了什么</h2>
  * <ul>
@@ -69,12 +73,24 @@ import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlo
 public final class ModularCellsApi {
 
     /**
-     * 所有已注册的模块方块套装（本模组三档 + 各第三方注册的）。
+     * Java 侧登记的套装：此刻还只有句柄（{@code RegisterEvent} 之前 {@code get()} 拿不到实例）。
      *
      * <p>并发安全，因为各模组的构造期是并行跑的（NeoForge 的 modloading worker），而这个表在那时被写入。</p>
      */
-    private static final List<ModuleBlockSet> MODULE_BLOCK_SETS =
+    private static final List<DeferredModuleBlockSet> DEFERRED_SETS =
             Collections.synchronizedList(new ArrayList<>());
+
+    /** 脚本侧登记的套装：登记时就是已建好的实例，不必解析。 */
+    private static final List<ModuleBlockSet> DIRECT_SETS =
+            Collections.synchronizedList(new ArrayList<>());
+
+    /**
+     * 两张表合并后的清单；{@code null} 表示还没解析或已被作废（每次登记都会置空）。
+     *
+     * <p>惰性解析而不是在某个事件里主动重算：这个字段的第一次读取就是能力注册那一步，那时注册表已经填好；
+     * 在那之前被读只会拿到一张不含 Java 侧套装的小表，而那时也没人需要完整清单。</p>
+     */
+    private static volatile List<ModuleBlockSet> merged;
 
     /**
      * 注册是否已关闭；由 {@link #validateAll()} 置位。
@@ -96,9 +112,9 @@ public final class ModularCellsApi {
      * @param items         你自己的物品注册器
      * @param blockEntities 你自己的方块实体类型注册器
      * @param tier          要服务的等级；它必须先注册进等级注册表
-     * @return 三件注册物；方块实体类型要等注册完成才能 {@code get()}
+     * @return 三个句柄；要拿实例得等注册完成（{@link DeferredModuleBlockSet#isBound()}）
      */
-    public static ModuleBlockSet registerEnergyCellModule(
+    public static DeferredModuleBlockSet registerEnergyCellModule(
             DeferredRegister.Blocks blocks,
             DeferredRegister.Items items,
             DeferredRegister<BlockEntityType<?>> blockEntities,
@@ -112,7 +128,7 @@ public final class ModularCellsApi {
      * <p>不自取时用 {@link #blockName}（{@code <tierId>_energy_cell_module}）。自取的名字要与贴图、语言键、
      * 方块状态 JSON 三处对齐——连通模型按方块 id 找模型，而贴图名仍按等级 id 拼（见类 javadoc）。</p>
      */
-    public static ModuleBlockSet registerEnergyCellModule(
+    public static DeferredModuleBlockSet registerEnergyCellModule(
             DeferredRegister.Blocks blocks,
             DeferredRegister.Items items,
             DeferredRegister<BlockEntityType<?>> blockEntities,
@@ -130,20 +146,71 @@ public final class ModularCellsApi {
         DeferredItem<BlockItem> item = items.registerSimpleBlockItem(name, block);
         DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyCellModuleBlockEntity>> blockEntity =
                 blockEntities.register(name, () -> createBlockEntityType(block));
-        ModuleBlockSet set = new ModuleBlockSet(tier, block, item, blockEntity);
-        MODULE_BLOCK_SETS.add(set);
+        DeferredModuleBlockSet set = new DeferredModuleBlockSet(tier, name, block, item, blockEntity);
+        DEFERRED_SETS.add(set);
+        merged = null;
         return set;
     }
 
     /**
-     * 已注册的全部方块套装，按注册顺序。
+     * 直接把建好的实例登记进来（脚本侧走这条）。
+     *
+     * <p>KubeJS 在 {@code RegisterEvent} 里自己调 {@code event.register}，不经过 {@code DeferredRegister}，所以
+     * 它手里只有实例。这个入口让那些套装与 Java 侧注册的汇进同一张清单，从而同样拿到能力注册与模型替换——
+     * 否则脚本造出来的模块方块会接不上线缆，而且不报错。</p>
+     *
+     * <p>调用方要把方块的方块实体类型回填好（{@code block.setBlockEntity(EnergyCellModuleBlockEntity.class,
+     * type, null, null)}），否则 AE2 的「拆下来给哪个物品」这类查询会失效。</p>
+     *
+     * @param tier        要服务的等级；它必须先注册进等级注册表
+     * @param id          方块（也是方块物品、方块实体类型、模型与贴图）的注册名
+     * @param block       模块方块
+     * @param item        模块方块物品
+     * @param blockEntity 模块方块实体类型
+     */
+    public static ModuleBlockSet registerModuleBlockSet(
+            EnergyCellTier tier,
+            ResourceLocation id,
+            EnergyCellModuleBlock block,
+            BlockItem item,
+            BlockEntityType<EnergyCellModuleBlockEntity> blockEntity) {
+        if (registrationClosed) {
+            throw new IllegalStateException("ModularCellsApi.registerModuleBlockSet was called for tier " + tier.id()
+                    + " after the server started; module block sets must be registered during mod construction");
+        }
+        ModuleBlockSet set = new ModuleBlockSet(tier, id, block, item, blockEntity);
+        DIRECT_SETS.add(set);
+        merged = null;
+        return set;
+    }
+
+    /**
+     * 已注册的全部方块套装，按登记顺序（脚本侧的先、Java 侧的后）。
      *
      * <p>本模组用它做能力注册与创造页填充；第三方一般不需要调，但可以用它遍历「所有模块方块」
      * （例如自己的联动逻辑）。</p>
      */
     public static List<ModuleBlockSet> allModuleBlockSets() {
-        synchronized (MODULE_BLOCK_SETS) {
-            return List.copyOf(MODULE_BLOCK_SETS);
+        List<ModuleBlockSet> cache = merged;
+        if (cache != null) {
+            return cache;
+        }
+        synchronized (ModularCellsApi.class) {
+            if (merged != null) {
+                return merged;
+            }
+            List<ModuleBlockSet> out = new ArrayList<>(DIRECT_SETS);
+            synchronized (DEFERRED_SETS) {
+                for (var pending : DEFERRED_SETS) {
+                    // 句柄还没绑定就跳过：那意味着注册表还没轮到本模组，这时 get() 会抛。
+                    // 首次真正需要完整清单的是能力注册，那时早就绑好了。
+                    if (pending.isBound()) {
+                        out.add(pending.resolve());
+                    }
+                }
+            }
+            merged = List.copyOf(out);
+            return merged;
         }
     }
 
@@ -172,9 +239,9 @@ public final class ModularCellsApi {
             }
             // 方块自报的等级必须与套装声明的一致。第三方图省事拿两个不同实例混用时，方块能放、能储能、名字也对，
             // 但按等级查套装会查不到（菜单的等级图标那条路径会拿到 null）。
-            if (set.block().get().tier() != tier) {
+            if (set.block().tier() != tier) {
                 throw new IllegalStateException("Module block set for tier " + tier.id()
-                        + " wraps a block that reports tier " + set.block().get().tier().id()
+                        + " wraps a block that reports tier " + set.block().tier().id()
                         + "; the block and the set must reference the same tier instance");
             }
         }

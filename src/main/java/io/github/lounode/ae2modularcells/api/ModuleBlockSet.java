@@ -1,33 +1,35 @@
 package io.github.lounode.ae2modularcells.api;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.entity.BlockEntityType;
-
-import net.neoforged.neoforge.registries.DeferredBlock;
-import net.neoforged.neoforge.registries.DeferredHolder;
-import net.neoforged.neoforge.registries.DeferredItem;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
 
 /**
- * 一个等级配套的那三件注册物：方块、方块物品、方块实体类型。
+ * 一个等级配套的那几件东西，**装的是已注册的实例**：模块方块、它的方块物品、方块实体类型。
  *
- * <p>由 {@link ModularCellsApi#registerEnergyCellModule} 返回，三件一起给你——它们的注册名必须相同（方块物品与
- * 方块实体都按方块名走），分开注册只会写错。</p>
+ * <p>这是本模组对「一个模块方块套装」的唯一表述（{@link ModularCellsApi#allModuleBlockSets()} 给的元素类型）。
+ * 两个来源汇进同一个形状：Java 侧经 {@link ModularCellsApi#registerEnergyCellModule} 注册（内部先收着
+ * {@code DeferredRegister} 的句柄，注册完成后解析成实例，见 {@link DeferredModuleBlockSet}），脚本侧经
+ * {@link ModularCellsApi#registerModuleBlockSet} 直接交实例——KubeJS 的注册不走 {@code DeferredRegister}，
+ * 它手里只有实例。</p>
  *
- * <p>{@code blockEntity} 的类型参数写 {@code ?} 是 NeoForge 的要求：方块实体类型注册器的键就是通配的，具体类型
- * 由 {@link DeferredHolder#get()} 还给你的那个 {@code BlockEntityType<EnergyCellModuleBlockEntity>} 表达。</p>
+ * <p><b>为什么要实例而不是句柄</b>：能力注册与客户端模型替换跨模组遍历这张清单，它们要的是真对象。两条路径若
+ * 各存一份，脚本注册的方块就会漏掉能力——表现为接不上线缆，而且不报错。</p>
  *
- * @param tier       这个套装服务的等级
- * @param block      模块方块
- * @param item       模块方块物品（{@code BlockItem}）
- * @param blockEntity 模块方块实体类型；本模组三档共用同一个方块实体类，但类型是分开注册的
+ * @param tier        这个套装服务的等级
+ * @param id          方块（也是方块物品、方块实体类型、模型与贴图）的注册名
+ * @param block       模块方块
+ * @param item        模块方块物品
+ * @param blockEntity 模块方块实体类型
  */
 public record ModuleBlockSet(
         EnergyCellTier tier,
-        DeferredBlock<EnergyCellModuleBlock> block,
-        DeferredItem<BlockItem> item,
-        DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyCellModuleBlockEntity>> blockEntity) {
+        ResourceLocation id,
+        EnergyCellModuleBlock block,
+        BlockItem item,
+        BlockEntityType<EnergyCellModuleBlockEntity> blockEntity) {
 }

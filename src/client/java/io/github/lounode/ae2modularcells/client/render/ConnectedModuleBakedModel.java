@@ -144,7 +144,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         for (var set : ModularCellsApi.allModuleBlockSets()) {
             var tier = set.tier();
             byBlockId.put(
-                    set.block().getId(),
+                    set.id(),
                     new ConnectedModuleBakedModel(
                             // 贴图名必须是**文件路径**（`block/<名>`），不是模型 JSON 里的槽名：
                             // 面板与边框的实际文件名不带 `_module` 后缀，写错会在资源重载时报「没进方块图集」并在游戏里
