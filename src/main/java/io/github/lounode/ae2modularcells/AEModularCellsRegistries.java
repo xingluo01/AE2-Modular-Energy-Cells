@@ -25,6 +25,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 
 import appeng.api.AECapabilities;
 import appeng.block.AEBaseEntityBlock;
+import appeng.blockentity.AEBaseBlockEntity;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.block.BlankEnergyUnitBlock;
@@ -247,6 +248,16 @@ public final class AEModularCellsRegistries {
      * <p>收到的能量不会留在这一块里：方块实体会把非核心收到的能量当场转交给核心的单一能量池。</p>
      */
     private static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        // 代表物品：AE2 用它做「名称回退」与「导出设置」的来源。不注册时 getItemFromBlockEntity() 落到
+        // Items.AIR——扳手拆下来的方块，物品提示里来源会显示成 Air（那把扳手流程正好要用 exportSettings）。
+        // 时机必须晚于物品注册：BE 类型注册的 lambda 里 DeferredItem 还没注册，.get() 会抛。
+        for (var tier : EnergyCellTier.values()) {
+            AEBaseBlockEntity.registerBlockEntityItem(MODULE_BLOCK_ENTITIES.get(tier).get(), moduleItem(tier).get());
+        }
+        AEBaseBlockEntity.registerBlockEntityItem(monitorBlockEntity(ENERGY_MONITOR), ENERGY_MONITOR_ITEM.get());
+        AEBaseBlockEntity.registerBlockEntityItem(monitorBlockEntity(FLOW_MONITOR), FLOW_MONITOR_ITEM.get());
+        AEBaseBlockEntity.registerBlockEntityItem(BLANK_ENERGY_UNIT_BLOCK_ENTITY.get(), BLANK_ENERGY_UNIT_ITEM.get());
+
         for (var type : MODULE_BLOCK_ENTITIES.values()) {
             event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, type.get(),
                     (blockEntity, side) -> blockEntity.getFeInput(side));
