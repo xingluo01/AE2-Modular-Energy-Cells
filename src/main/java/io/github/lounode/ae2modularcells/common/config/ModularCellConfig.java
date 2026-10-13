@@ -18,6 +18,7 @@ import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.serializer.ConfigListOrdering;
 
 import io.github.lounode.ae2modularcells.AE2ModularCells;
+import io.github.lounode.ae2modularcells.api.ModularCellsApi;
 import io.github.lounode.ae2modularcells.common.BuiltInComponents;
 import io.github.lounode.ae2modularcells.common.ComponentGain;
 import io.github.lounode.ae2modularcells.common.ComponentSpec;
@@ -158,6 +159,8 @@ public final class ModularCellConfig {
         ComponentSpecSerializer.markRegistryReady();
         // 等级注册表此时已填好：先校验再往下走，配置错误在启动期就暴露。
         ModularCellTiers.validateRegistry();
+        // 方块套装那侧单独校验：它引用的是等级实例，而没注册的实例不在上面那轮遍历的范围里。
+        ModularCellsApi.validateAll();
         ensureCatalogPresent();
         // 无论有没有补入都重读一次：兜底分支填的只是运行时表，不重读的话用户对文件的修改在本会话内不生效
         // （值没变就不会触发上面的变更监听）。

@@ -82,6 +82,15 @@
 - ⬜ 指南书（GuideME `ae2guide`，中英两份要同步改）
 - ⬜ `docs/LOCAL_DEPS.md` 与 `docs/LOCAL_CLONES.md`（本机本地，已 gitignore）
 
+### M9 扩展面（第三方接入）— 🔄 P3
+
+- ✅ **等级可注册**：`EnergyCellTier` 从枚举改为注册表元素（注册表键 `ae2modularcells:energy_cell_tier`），其他模组用自己的命名空间注册新等级；本模组三档的注册名、数值、声明顺序均不变
+- ✅ **位号固定**：存档里的 `tierMask` 位号改取固定位号（内置三档 0/1/2，其余按注册名排序从 3 起），不再用注册表的整数 id——那是「注册分配序」，第三方先注册就会让旧存档认错档（口径见 `docs/ARCHITECTURE.md` §2.1）
+- ✅ **方块套装 API**：`api/ModularCellsApi#registerEnergyCellModule` 一次注册方块 / 方块物品 / 方块实体类型并把类型回填给方块；本模组自己走同一入口，不留特权路径
+- ✅ **能力与模型跨模组遍历**：能力注册（FE 面 / 组件槽物品面 / 网格主机能力）与客户端模型替换改走 `allModuleBlockSets()`；创造页反向只收本模组命名空间（接入面全貌见 §5.1）
+- ⬜ **KubeJS 插件**：让整合包脚本不写 Java 也能加等级；依赖方块套装 API（已完成），未开工
+- ⬜ **数据生成**：第三方现在要手抄 blockstates / models JSON 与两张贴图命名；将来可用 datagen 提供一个生成器
+
 ## 二、已定数值（唯一事实源是代码里的常量类）
 
 | 等级 | A 基础容量 | 槽位 C_tier | V 基础速率 | V_max 每块速率上限 | V_in_max 每块输入上限 |

@@ -38,6 +38,7 @@ import appeng.client.render.cablebus.CubeBuilder;
 
 import io.github.lounode.ae2modularcells.AE2ModularCells;
 import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
+import io.github.lounode.ae2modularcells.api.ModularCellsApi;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
@@ -140,10 +141,12 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      */
     public static void install(ModelEvent.ModifyBakingResult event) {
         Map<ResourceLocation, net.minecraft.client.resources.model.BakedModel> byBlockId = new HashMap<>();
-        for (var tier : ModularCellTiers.all()) {
-            String name = AEModularCellsRegistries.blockName(tier);
+        // 遍历全局清单而不是等级表：第三方可以给自己的方块取别名，而匹配键是方块 id（见上面那段注释）。
+        // getId() 在这里安全——模型烘焙是运行期，注册表早已就绪。
+        for (var set : ModularCellsApi.allModuleBlockSets()) {
+            var tier = set.tier();
             byBlockId.put(
-                    ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, name),
+                    set.block().getId(),
                     new ConnectedModuleBakedModel(
                             // 贴图名必须是**文件路径**（`block/<名>`），不是模型 JSON 里的槽名：
                             // 面板与边框的实际文件名不带 `_module` 后缀，写错会在资源重载时报「没进方块图集」并在游戏里

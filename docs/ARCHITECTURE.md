@@ -55,7 +55,7 @@
 
 ### 2.1 等级（`EnergyCellTier`）
 
-三个等级：基础 / 致密 / 超密。公式要用的五个数值全部集中在 `common/EnergyCellTier.java`：基础容量 A、基础速率 V、组件槽位 C_tier、每块速率上限 V_max、每块输入速率上限 V_in_max（整段上限 = 各块之和）。
+三个内置等级：基础 / 致密 / 超密。它们各自是一个**注册表元素**（注册表键 `ae2modularcells:energy_cell_tier`），不是枚举——其他模组可以用自己的命名空间注册新等级，接入方式见 §5.1。公式要用的五个数值现在是等级对象的字段（`common/EnergyCellTier.java`）：基础容量 A、基础速率 V、组件槽位 C_tier、每块速率上限 V_max、每块输入速率上限 V_in_max（整段上限 = 各块之和）。
 
 | 等级 | A 基础容量 | 槽位 C_tier | V 基础速率 | V_max 每块速率上限 | V_in_max 每块输入上限 |
 |---|---:|---:|---:|---:|---:|
@@ -63,7 +63,11 @@
 | 致密 | 1 600 000 AE | 2 | 8 000 AE/t | 128 000 AE/t | 64 000 AE/t |
 | 超密 | 12 800 000 AE | 3 | 64 000 AE/t | 1 024 000 AE/t | 512 000 AE/t |
 
-数值只此一处；结构汇总、菜单展示、配方（若需要）都引用枚举，不写第二份字面量。
+数值只此一处（`common/ModularCellTiers.java` 的三档声明）；结构汇总、菜单展示、配方（若需要）都引用等级实例，不写第二份字面量。
+
+**位序是存档协议，而位号是固定的。** `StructureStats.tierMask` 是「第 N 位为 1 表示出现过第 N 档」的位掩码。那个 N 由 `ModularCellTiers#indexOf` 给出：内置三档写死 **0/1/2**（与它们曾经是枚举时的 `ordinal()` 逐位相同，所以只装本模组的旧存档读回来仍然认得对），其余等级从 3 起按注册名排序分配。
+
+**位号刻意不取注册表的整数 id**：那是「注册分配序」，由各模组的加载与事件触发次序决定，第三方先注册就会夺走 0/1/2、本模组三档变成 3/4/5，旧存档的混拼结构全部认错档。位号只依赖「注册了哪几个等级」，因此同样的模组集合在任何一端都得到同样的位号。改动本类三档的声明顺序仍然是破坏性的（位号跟着变）。掩码是 `int`，等级总数上限 32（`bitOf` 与启动期的 `validateRegistry` 都会拦）。
 
 ### 2.2 模块方块与组件槽
 
@@ -209,6 +213,37 @@
 所以：新增一个邻居就是往 `BuiltInComponents` 的清单里加一条——它会在下次启动时被自动补入（服务器启动那一步把清单里「配置还没有的」写进文件），不必手动改存档。取舍是彻底的可见可改换来与上游脱节：邻居改了字节数我们不会自己跟。`integration/` 留给真正必须引用邻居类型的东西（Jade 浮层之类）。
 
 `StorageComponentTier` 是清单的**数值来源**（改它只影响往后新写的初始值）。而手势判「更低档 / 同档另一种」比的是组件数值本身（`ComponentGain#magnitude`），不是那张表的序号，所以配置里新增的组件也能参与手势。
+
+### 5.1 给其他模组的接入面（`api` 包）
+
+其他模组要接入，就是两步：**注册一个等级**，再**注册它配套的方块套装**。
+
+```java
+public static final DeferredRegister<EnergyCellTier> TIERS =
+        DeferredRegister.create(ModularCellTiers.TIER_REGISTRY_KEY, "yourmod");
+public static final DeferredHolder<EnergyCellTier, EnergyCellTier> MY_TIER =
+        TIERS.register("my_tier", () -> new EnergyCellTier("my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L));
+
+public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellModule(
+        BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER.get());
+```
+
+`ModularCellsApi#registerEnergyCellModule` 代做三件事：三者同名注册（方块 / 方块物品 / 方块实体类型）、把方块实体类型回填给方块、把套装塞进全局清单。
+
+**全局清单是这一层的关键**（`ModularCellsApi#allModuleBlockSets`）。能力注册与客户端模型替换都要跨模组看「全部模块方块」：
+
+- **能力注册**（`AEModularCellsRegistries#registerCapabilities`）按方块实体类型走一遍清单，给每个套装挂三条：`EnergyStorage.BLOCK`（只进不出的 FE 面）、`ItemHandler.BLOCK`（组件槽的自动化面）、`AECapabilities.IN_WORLD_GRID_NODE_HOST`。最后一条最容易漏——**AE2 只在它自己的类型表上批量注册网格主机能力**（上游 `InitCapabilityProviders` 遍历 `AEBlockEntities.BLOCK_ENTITY_TYPES`），第三方不补就接不上线缆，而且一条报错都没有，只是那一块永远不联网。
+- **客户端模型替换**（`ConnectedModuleBakedModel#install`）也遍历清单、按 `set.block().getId()` 匹配烘焙表。遍历等级表是不行的：第三方可以给自己的方块取别名。
+- **创造页**反过来**只收本模组命名空间**的物品，第三方的方块进他们自己的标签页。
+- 本模组自己的三档走**同一个入口**（`AEModularCellsRegistries` 的 static 块），不给自己留特权路径，否则两条注册路径迟早会分叉。
+
+**第三方要自备的东西**：
+
+- 贴图两张，按等级 id 命名：`<tierId>_energy_cell`（面板）与 `<tierId>_energy_cell_light`（亮面）。连通模型按等级 id 找它们，名字不匹配的表现是紫黑格。
+- 方块状态与物品模型 JSON：本模组不做数据生成，三档那几份可以照抄（形状变体 `fill=0..4`）。
+- 语言键 `block.<命名空间>.<方块名>`。
+
+**边界**：等级与方块套装是**双端都要满足**的注册表——只在服务端注册的等级，客户端解不出那一档（终端里的结构快照按位号配对）。位号因此在两端必须一致，而这靠「两端装了同一批等级」保证，与注册顺序无关（见 §2.1）。
 
 ---
 
