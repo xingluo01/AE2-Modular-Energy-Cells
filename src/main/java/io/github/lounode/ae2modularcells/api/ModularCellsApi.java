@@ -2,7 +2,12 @@ package io.github.lounode.ae2modularcells.api;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -72,6 +77,17 @@ public final class ModularCellsApi {
             Collections.synchronizedList(new ArrayList<>());
 
     /**
+     * 注册是否已关闭；由 {@link #validateAll()} 置位。
+     *
+     * <p>服务端启动之后还调 {@link #registerEnergyCellModule} 就晚了：方块不会被 NeoForge 收走，但套装已经进了
+     * 清单，于是能力注册那步会对一个未绑定的 holder 调 {@code get()}，报出一句与真正原因毫无关系的
+     * “unbound value”。在这里就拦下来，换一句能看懂的话。</p>
+     */
+    private static volatile boolean registrationClosed;
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ModularCellsApi.class);
+
+    /**
      * 注册一个等级的方块套装，注册名取 {@code <tierId>_energy_cell_module}。
      *
      * <p>必须在模组构造期调用（注册器还没来得及处理之前），否则这次注册不会被 NeoForge 收走。</p>
@@ -102,6 +118,11 @@ public final class ModularCellsApi {
             DeferredRegister<BlockEntityType<?>> blockEntities,
             EnergyCellTier tier,
             String name) {
+        if (registrationClosed) {
+            throw new IllegalStateException("ModularCellsApi.registerEnergyCellModule was called for tier " + tier.id()
+                    + " after the server started; module block sets must be registered during mod construction"
+                    + " (registering this late would leave the block outside NeoForge's registry)");
+        }
         DeferredBlock<EnergyCellModuleBlock> block = blocks.register(name,
                 () -> new EnergyCellModuleBlock(tier, BlockBehaviour.Properties.of()
                         .strength(2.5F, 6.0F)
@@ -136,13 +157,35 @@ public final class ModularCellsApi {
      * <p>校验时机同等级那边：服务端启动，此时两张表都已定下来。</p>
      */
     public static void validateAll() {
+        Set<EnergyCellTier> tiersWithBlockSets = new HashSet<>();
         for (var set : allModuleBlockSets()) {
-            if (ModularCellTiers.registryNameOf(set.tier()) == null) {
-                throw new IllegalStateException("Module block set for tier " + set.tier().id()
+            EnergyCellTier tier = set.tier();
+            if (ModularCellTiers.registryNameOf(tier) == null) {
+                throw new IllegalStateException("Module block set for tier " + tier.id()
                         + " was registered, but that tier is not in the energy cell tier registry;"
                         + " register it first (see ModularCellsApi)");
             }
+            if (!tiersWithBlockSets.add(tier)) {
+                throw new IllegalStateException("Tier " + tier.id()
+                        + " has more than one module block set; which one is \"the\" block for that tier would then"
+                        + " depend on registration order");
+            }
+            // 方块自报的等级必须与套装声明的一致。第三方图省事拿两个不同实例混用时，方块能放、能储能、名字也对，
+            // 但按等级查套装会查不到（菜单的等级图标那条路径会拿到 null）。
+            if (set.block().get().tier() != tier) {
+                throw new IllegalStateException("Module block set for tier " + tier.id()
+                        + " wraps a block that reports tier " + set.block().get().tier().id()
+                        + "; the block and the set must reference the same tier instance");
+            }
         }
+        // 有等级、没方块套装：不会出错（那种等级永远不出现在结构里），但多半是漏了注册，说一声。
+        for (var tier : ModularCellTiers.all()) {
+            if (!tiersWithBlockSets.contains(tier)) {
+                LOGGER.warn("Energy cell tier {} has no module block set; it will never appear in a structure",
+                        tier.id());
+            }
+        }
+        registrationClosed = true;
     }
 
     /** 等级的默认方块名：{@code <tierId>_energy_cell_module}。 */

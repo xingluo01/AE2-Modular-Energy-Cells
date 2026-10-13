@@ -37,10 +37,8 @@ import net.neoforged.neoforge.client.model.data.ModelData;
 import appeng.client.render.cablebus.CubeBuilder;
 
 import io.github.lounode.ae2modularcells.AE2ModularCells;
-import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.api.ModularCellsApi;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
-import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleModelData;
 

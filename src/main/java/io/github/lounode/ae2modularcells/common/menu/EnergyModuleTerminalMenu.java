@@ -683,7 +683,12 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
                 return this.clientMirror[slot];
             }
             var tier = this.tiers[slot];
-            return tier == null ? ItemStack.EMPTY : new ItemStack(AEModularCellsRegistries.moduleBlock(tier).asItem());
+            if (tier == null) {
+                return ItemStack.EMPTY;
+            }
+            // 按等级查方块也可能查不到（那一档没有注册方块套装）：与上面的 null 一样当作「这里没东西」。
+            var block = AEModularCellsRegistries.moduleBlock(tier);
+            return block == null ? ItemStack.EMPTY : new ItemStack(block.asItem());
         }
 
         @Override
