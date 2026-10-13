@@ -1,5 +1,7 @@
 package io.github.lounode.ae2modularcells.common.logic;
 
+import java.util.Objects;
+
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
@@ -61,6 +63,15 @@ public final class MultiblockScanner {
 
     /** 一段成立的结构：最小角与边长。 */
     public record Layout(BlockPos origin, int side) {
+
+        /**
+         * 非空校验：{@code origin} 为 {@code null} 且 {@code side} 仍有效（例如 1）是「身份字段没恢复」的典型
+         * 形状，而 record 不会自己拦。放过它的话，错误要拖到 {@link #modulePos} 里才以一句 NPE 暴出来，堆栈里
+         * 看不出是哪个入参坏的。
+         */
+        public Layout {
+            Objects.requireNonNull(origin, "origin");
+        }
 
         /** 结构内的方块数，也就是模块数。 */
         public int moduleCount() {

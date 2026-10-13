@@ -799,6 +799,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * 整段——比起每 20 tick 都扫一遍，这便宜得多。</p>
      */
     private List<BlockPos> monitorPositions(Level level) {
+        // 自成守卫，不靠调用方的前置早退：未成型时没有整段可扫（structureOrigin 只有核心写）。
+        if (this.structureOrigin == null || this.ownStats.side() <= 1) {
+            return List.of();
+        }
         if (this.monitorCache != null) {
             return this.monitorCache;
         }
@@ -1921,13 +1925,20 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // 这类变化只由结构事件通知，成员区块重新加载时不会再收到一次。这里一次遍历把它们对齐，
         // 未加载的成员由它自己的 onReady 兜住。不注册 ticker，只在核心加载时走这一遍。
         // 过 guardStructure：它是一次结构级遍历，与本文件其它结构副作用同一条纪律。
-        guardStructure("核心加载后重推成员暴露面", this::refreshMemberExposure);
+        // 只核心走：方法用的是 this 的身份字段（structureOrigin 只有核心写），成员跑这一遍没有意义，
+        // 而 isFormed() 查的是 resolveCore() 的账目——成员同样为 true，拦不信它。
+        if (isCore()) {
+            guardStructure("核心加载后重推成员暴露面", this::refreshMemberExposure);
+        }
     }
 
     /** 让整段成员按当前结构重推一次暴露面（只在核心的 onReady 里走一次）。 */
     private void refreshMemberExposure() {
         var level = this.level;
-        if (level == null || !isFormed()) {
+        // 判据用「自己有没有身份字段」而不是 isFormed()：后者查的是 resolveCore() 的账目，成员块一样为 true，
+        // 而成员自己的 structureOrigin 是 null（那个字段只有核心写）。少了这一条，成员读档时会在这里抛 NPE。
+        // 同款守卫见本文件的 getConnections / moduleTiersInOrder / rows。
+        if (level == null || this.structureOrigin == null || this.ownStats.side() <= 1) {
             return;
         }
         var layout = new MultiblockScanner.Layout(this.structureOrigin, this.ownStats.side());
