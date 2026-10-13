@@ -32,3 +32,6 @@ docs/LOCAL_CLONES.md
 # Pi workflow metadata
 plans/
 .pi/
+
+# Qoder 生成的仓库 wiki：工具产物，随会话与版本变化，不进版本库（文件留在本地）。
+.qoder/
