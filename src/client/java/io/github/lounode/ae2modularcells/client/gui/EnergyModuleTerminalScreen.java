@@ -613,7 +613,7 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         if (this.snapshotPending) {
             for (int band = 0; band < MAX_ROWS; band++) {
                 this.bandTiers[band] = null;
-                this.bandCounts[band] = MODULES_PER_ROW;
+                this.bandCounts[band] = 0;
                 this.bandMarks[band] = String.valueOf(BAND_MODULES);
             }
             return;
@@ -623,7 +623,10 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
             int rowIndex = getMenu().rowOffset + band;
             var row = rowIndex >= 0 && rowIndex < this.localRows.size() ? this.localRows.get(rowIndex) : null;
             this.bandTiers[band] = row == null ? null : row.title();
-            this.bandCounts[band] = row == null ? 0 : row.moduleCount();
+            // 标题行显示的是「这一组有几块」，不是这一行自己的模块数（标题行恒为 0，直接用会渲染成
+            // 「模块数量：0」）；模块行的这个值没人读，维持原义。
+            this.bandCounts[band] = row == null ? 0
+                    : (row.isTitle() ? groupModuleCount(rowIndex) : row.moduleCount());
             if (row == null) {
                 this.bandMarks[band] = EMPTY_MARK;
             } else if (row.isTitle()) {
@@ -645,15 +648,6 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
             count += row.moduleCount();
         }
         return count;
-    }
-
-    /** 标题标记里那一段模块数；解析不出来给 0（界面少一个数字，不崩）。 */
-    private static int parseCount(String text) {
-        try {
-            return Math.max(0, Integer.parseInt(text));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     /**
