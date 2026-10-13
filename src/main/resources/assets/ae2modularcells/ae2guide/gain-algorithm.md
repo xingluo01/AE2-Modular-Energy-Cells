@@ -18,14 +18,16 @@ How much a module stores and how fast it moves energy are both worked out from t
 
 ## The two formulas
 
-```
-module capacity   D    = (A + Σ S_i × k)  × (1 + b  × C)
-module rate       D_v  = (V + Σ Sv_i × kv) × (1 + bv × C)
+Per module:
 
-structure total   T    = Σ D_j
-structure rate    T_v  = min(Σ D_vj, Σ V_max_j)
-structure input   T_in = min(T_v × f_in, Σ V_in_max_j)
-```
+* capacity **D = (A + Σ S_i × k) × (1 + b × C)**
+* rate **D_v = (V + Σ Sv_i × kv) × (1 + bv × C)**
+
+Per structure:
+
+* capacity **T = Σ D_j**
+* rate **T_v = min(Σ D_vj, Σ V_max_j)**
+* input **T_in = min(T_v × f_in, Σ V_in_max_j)**
 
 `A` and `V` are the base capacity and base rate of that module's own tier. `S_i` is the capacity value of the i-th storage component, `Sv_i` the value of the i-th energy storage component (Applied Flux `core_*`): capacity reads the first, rate reads the second, and the two component families drive one formula each. `C` is how many components are **actually inserted**; empty slots do not count.
 

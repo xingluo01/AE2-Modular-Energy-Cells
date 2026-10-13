@@ -18,14 +18,16 @@ categories:
 
 ## 两条公式
 
-```
-单模块容量   D    = (A + Σ S_i × k) × (1 + b  × C)
-单模块速率   D_v  = (V + Σ Sv_i × kv) × (1 + bv × C)
+单模块：
 
-整段容量     T    = Σ D_j
-整段速率     T_v  = min(Σ D_vj, Σ V_max_j)
-整段输入     T_in = min(T_v × f_in, Σ V_in_max_j)
-```
+* 容量 **D = (A + Σ S_i × k) × (1 + b × C)**
+* 速率 **D_v = (V + Σ Sv_i × kv) × (1 + bv × C)**
+
+整段：
+
+* 容量 **T = Σ D_j**
+* 速率 **T_v = min(Σ D_vj, Σ V_max_j)**
+* 输入 **T_in = min(T_v × f_in, Σ V_in_max_j)**
 
 `A` 与 `V` 是这块自己那一档的基础容量与基础速率。`S_i` 是第 i 个存储组件的容量值，`Sv_i` 是第 i 个能量存储组件（Applied Flux 的 `core_*`）的值：容量看前者、速率看后者，两类组件各管一条公式。`C` 是这一块**实际插了**几个组件，空槽不计。
 
