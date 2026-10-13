@@ -244,12 +244,11 @@ public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellMo
 
 - 贴图两张，按等级 id 命名：`<tierId>_energy_cell`（面板）与 `<tierId>_energy_cell_light`（亮面）。连通模型按等级 id 找它们，名字不匹配的表现是紫黑格。
 - 方块状态与物品模型 JSON：本模组不做数据生成，三档那几份可以照抄（形状变体 `fill=0..4` × `formed=false/true`，共十个）。
-- **方块掉落表**：`data/<你的命名空间>/loot_table/blocks/<方块名>.json`。没有它，方块挖下来**什么都不掉**，
-  而且没有任何报错——内置三档有这份文件可以照抄。
 - 语言键 `block.<命名空间>.<方块名>`。
 
-（贴图、模型与语言键只客户端需要，掉落表走服务端数据包。面向接入者的完整版含失败现象对照表，见
-[`INTEGRATION.md`](INTEGRATION.md)。）
+（贴图、模型与语言键都只客户端需要。**掉落不用管**：方块本体由 `EnergyCellModuleBlock#getDrops` 给出、
+组件由父类的 `addAdditionalDrops` 给出，所以挖掘、爆炸、扳手拆解与第三方工具的批量破坏都覆盖到了，脚本与
+第三方注册的档位都不需要掉落表。面向接入者的完整版含失败现象对照表，见 [`INTEGRATION.md`](INTEGRATION.md)。）
 
 **脚本侧（KubeJS）**
 
@@ -290,7 +289,7 @@ vanilla 注册表早于本模组的自建注册表（**实测成立，不是契�
   node tools/check-screen-widgets.cjs .
   ```
   退出码 0 = 全部已声明；1 = 有未声明；**2 = AE2 公共段落未取到、部分项无法判定——2 不算通过**。
-- `data/ae2modularcells/`：`recipe`、`loot_table`、`tags`
+- `data/ae2modularcells/`：`recipe`、`loot_table`（只剩监控器与 `blank_energy_unit`——模块方块不再需要掉落表）、`tags`
 - `META-INF/accesstransformer.cfg`：本模组自己的访问转换器。目前只开一个口：`Slot.x` / `Slot.y` 去 final（终端面板高度随「终端样式」档位变，玩家背包区要跟着表尾往下挪，而槽位坐标只能改写）。AE2 自己也开了同一个口。
 
 布局文档的控件尺寸、贴图切片、文字颜色也都归文档：能进文档的别写死在代码里。

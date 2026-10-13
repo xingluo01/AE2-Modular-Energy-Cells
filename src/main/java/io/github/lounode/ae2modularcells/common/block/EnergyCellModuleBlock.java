@@ -12,6 +12,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -20,11 +21,18 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
 
+import java.util.List;
+
 import appeng.block.AEBaseEntityBlock;
+import appeng.blockentity.AEBaseBlockEntity;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocators;
+import appeng.util.SettingsFrom;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
@@ -208,6 +216,36 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
         }
         // 父类负责把方块实体里的组件掉出来（AEBaseEntityBlock#onRemove → addAdditionalDrops）。
         super.onRemove(state, level, pos, newState, isMoving);
+    }
+
+    /**
+     * 掉落：本体一件。
+     *
+     * <p><b>为什么自己给而不走掉落表</b>：原先每个档位都要一份 {@code data/<ns>/loot_table/...}，而脚本与第三方
+     * 注册的档位没法复用它（脚本那边连一份能抄的都没有），抄漏了也不报错，只表现为挖下来什么都不掉。
+     * 改到这里之后，谁注册的模块方块都不需要数据包。</p>
+     *
+     * <p><b>为什么是 {@code getDrops} 而不是 {@code playerDestroy}</b>：走掉落表的不只「玩家挖掘」——爆炸、
+     * {@code Level#destroyBlock}（AE2 的扳手拆解走的就是它）、第三方工具的批量破坏都从 {@code getDrops} 取。
+     * 只盖 {@code playerDestroy} 会让那些路径<b>把本体吞掉</b>（方块没了、物品也没了）。</p>     *
+     * <p>组件不在这里给：它们由父类的 {@code addAdditionalDrops} 交出来（经 {@code onRemove}）。</p>
+     */
+    @Override
+    public List<ItemStack> getDrops(BlockState state, LootParams.Builder params) {
+        if (asItem() == Items.AIR) {
+            return List.of();
+        }
+        var drop = new ItemStack(asItem());
+        // 照父类同一口径把方块实体的设置套上（内存卡命名过的模块，拆下来仍带着那个名字）。
+        // 不调 super 是因为它那套先要问掉落表，而模块方块已经没有掉落表了。
+        var lootContext = params.withParameter(LootContextParams.BLOCK_STATE, state)
+                .create(LootContextParamSets.BLOCK);
+        if (lootContext.getParamOrNull(LootContextParams.BLOCK_ENTITY) instanceof AEBaseBlockEntity blockEntity) {
+            var looter = lootContext.getParamOrNull(LootContextParams.THIS_ENTITY);
+            drop.applyComponents(blockEntity.exportSettings(SettingsFrom.DISMANTLE_ITEM,
+                    looter instanceof Player player ? player : null));
+        }
+        return List.of(drop);
     }
 
     /** 只有这一档的方块才有对应的方块实体，取用一律经它，别在这里直接 new。 */

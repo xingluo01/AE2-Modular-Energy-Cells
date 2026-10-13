@@ -21,7 +21,7 @@
  * <p>入口是方块而不是等级，原因见 {@link ModularCellsKubeJSPlugin} 的类 javadoc：KubeJS 的落盘只认「当前正在
  * 注册的那个注册表」。等级名默认取方块名去掉 {@code _energy_cell_module} 后缀。</p>
  *
- * <p>贴图（两张，按等级 id 命名）、方块状态与物品模型 JSON、**方块掉落表**（{@code data/<命名空间>/loot_table/blocks/<方块名>.json}，
- * 没有它挖下来什么都不掉且不报错）与语言键仍要自己准备，口径见 {@code docs/ARCHITECTURE.md} §5.1。</p>
+ * <p>贴图（两张，按等级 id 命名）、方块状态与物品模型 JSON（或照抄内置三档那几份）与语言键仍要自己准备。
+ * <b>掉落不用管</b>——本体与组件都由模组自己给，与数据包无关。口径见 {@code docs/ARCHITECTURE.md} §5.1。</p>
  */
 package io.github.lounode.ae2modularcells.integration.kubejs;

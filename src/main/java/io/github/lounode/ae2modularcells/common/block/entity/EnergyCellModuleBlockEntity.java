@@ -1965,9 +1965,6 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /**
-     * 组件槽里的东西也算「内部内容」，拆卸时要一并交出来。
-     *
-    /**
      * 组件槽的掉落与清空都交给父类。
      *
      * <p>{@code AEBaseInvBlockEntity} 已经把 {@code getInternalInventory()} 返回的库存接进了
