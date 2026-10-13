@@ -227,7 +227,8 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
      *
      * <p><b>为什么是 {@code getDrops} 而不是 {@code playerDestroy}</b>：走掉落表的不只「玩家挖掘」——爆炸、
      * {@code Level#destroyBlock}（AE2 的扳手拆解走的就是它）、第三方工具的批量破坏都从 {@code getDrops} 取。
-     * 只盖 {@code playerDestroy} 会让那些路径<b>把本体吞掉</b>（方块没了、物品也没了）。</p>     *
+     * 只盖 {@code playerDestroy} 会让那些路径<b>把本体吞掉</b>（方块没了、物品也没了）。</p>
+     *
      * <p>组件不在这里给：它们由父类的 {@code addAdditionalDrops} 交出来（经 {@code onRemove}）。</p>
      */
     @Override
