@@ -9,17 +9,18 @@ import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
  * 容量与速率的计算口径——两条公式只在这里实现一次。
  *
  * <pre>
- * 单模块容量   D    = (A + Σ S_i × k)  × (1 + b  × C)
+ * 单模块容量   D    = (A + Σ S_i  × m_i  × k)  × (1 + b  × C)
  * 总容量       T    = Σ D_j          （每块按自己那一档的 A）
- * 单模块速率   D_v  = (V + Σ Sv_i × kv) × (1 + bv × C)
+ * 单模块速率   D_v  = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C)
  * 总速率       T_v  = min(Σ D_vj, Σ V_max_j)      （上限也是逐块之和）
  * 总输入速率   T_in = min(T_v × f_in, Σ V_in_max_j)
  * </pre>
  *
  * <p>符号：{@code S_i} 与 {@code Sv_i} 都取自组件槽里同一个 {@link ComponentGain}——一个组件可以同时贡献两个
- * 维度；{@code C} 是该模块实际插了几个组件。系数分两类：{@code k} 与 {@code kv} 乘的是组件自己带来的值，
- * 属于组件常量（{@link ModularCellConstants}，不进配置）；{@code b} / {@code bv} / {@code f_in} 描述结构
- * 规模与输入口径，可配（默认值在 {@link ModularCellConstants}，运行时取 {@code ModularCellConfig}）。</p>
+ * 维度；{@code m_i} / {@code mv_i} 是这个组件自己的修正倍率（同档组件靠它分强弱，默认 1.0）；{@code C} 是该
+ * 模块实际插了几个组件。系数分两类：{@code k} 与 {@code kv} 乘的是组件自己带来的值，属于组件常量（不进制
+ * 配置）；{@code b} / {@code bv} / {@code f_in} 描述结构规模与输入口径，可配（默认值在
+ * {@link ModularCellConstants}，运行时取 {@code ModularCellConfig}）。</p>
  */
 public final class CellMath {
 
@@ -31,8 +32,8 @@ public final class CellMath {
     }
 
     /**
-     * 一块模块的容量与速率：{@code D = (A + Σ S_i × k) × (1 + b × C)}、
-     * {@code D_v = (V + Σ Sv_i × kv) × (1 + bv × C)}。
+     * 一块模块的容量与速率：{@code D = (A + Σ S_i × m_i × k) × (1 + b × C)}、
+     * {@code D_v = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C)}。
      *
      * <p><b>{@code C} 数的是「这一块实际插了几个组件」</b>，不是「有几个给了容量 / 有几个给了速率」：一个组件
      * 可以同时贡献两个维度，而只给一维的组件同样占着一个槽。早先两侧各自按「数组里非零的个数」数一次，那时容量
@@ -51,8 +52,8 @@ public final class CellMath {
             if (gain == null || gain.isEmpty()) {
                 continue;
             }
-            capacitySum += gain.capacity();
-            transferSum += gain.transfer();
+            capacitySum += gain.capacity() * gain.capacityMultiplier();
+            transferSum += gain.transfer() * gain.transferMultiplier();
             count++;
         }
         double capacity = (tier.baseCapacity() + capacitySum * ModularCellConfig.componentDiscount())

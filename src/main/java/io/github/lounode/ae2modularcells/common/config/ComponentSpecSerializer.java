@@ -11,19 +11,18 @@ import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import io.github.lounode.ae2modularcells.common.ComponentSpec;
 
 /**
- * 「存储组件清单」条目的序列化器：一行文本 ↔ 一个 {@link ComponentSpec}。
+ * {@code componentGains} 的序列化器：一条 = 物品 id（键）+ 值与倍率（值）。
  *
- * <p><b>为什么实现 {@code IConfigKeyValueSerializer} 而不是基础的 {@code IConfigValueSerializer}</b>：
- * 这个接口把一个元素拆成「键」与「值」两半，配置界面会把它们渲染成<b>两列</b>分别编辑——左列是物品 id、
- * 右列是那两个数字。只实现基础接口的话，整条会挤成一串长文本，而
- * {@code ae2omnicells:quantum_omni_cell_component_256m=268435456:0} 有 50 个字符，在列表里会被截断成
- * 「ae2omnicells:omni_cell_component...」，看不出是哪个档。</p>
+ * <p>实现的是 {@link IConfigKeyValueSerializer} 而不是普通的单值序列化器——这样配置界面会把一条渲染成
+ * <b>两列</b>（左 id、右参数），而不是把整条挤成一行长文本后截断。对应的语义正是「键是那个组件、值是它的衍生
+ * 数据」。</p>
  *
- * <p>文本形仍然是 {@code <物品 id>=<容量值>:<速率值>}，与写入配置文件的形式一致，所以旧文件原样可读。
- * 两个值都可以省略（省略即 0）。id 必须带命名空间——不带会被当成 {@code minecraft:xxx}。</p>
+ * <p><b>文本形</b>：{@code <物品 id>=<容量值>:<速率值>[:<容量倍率>[:<速率倍率>]]}，从尾部可以省略。倍率是
+ * {@code 1.0} 时一律省掉，所以不带修正的条目写出来与加倍率之前<b>逐字一致</b>，旧配置文件原样可读。</p>
  *
- * <p>用户可见的文本（语法说明与诊断）一律走语言键，不在代码里写死；{@code getValidValuesDescription()}
- * 与诊断都是 String 接口，所以这里用 {@link Component#getString()} 取当前语言下的译文。</p>
+ * <p><b>校验与诊断</b>：字符串解析与「物品是否存在」的检查都走这里，界面会直接用同一条路径，于是写错的条目
+ * 在界面上就会被标出来并给出原因，而不是等运行期静默失效。注册表未就绪时跳过存在性检查（见
+ * {@link #markRegistryReady()}）。</p>
  */
 final class ComponentSpecSerializer implements IConfigKeyValueSerializer<ComponentSpec, ResourceLocation, ComponentValues> {
 
@@ -37,11 +36,11 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
      *
      * <p>不能用「{@code BuiltInRegistries.ITEM} 非空」当判据：原版内容在<b>模组构造期就已经注入</b>，那个集合
      * 一开局就是非空的，于是「构造期放行」等于没写；而那一刻模组物品（AppFlux / MEGA 那些）还没注册，会把
-     * 合法条目一律报成「物品不存在」。所以由 {@code ModularCellConfig#onServerStarted()} 显式置位。</p>
+     * 合法条目一律报成「物品不存在」。所以由服务器启动时显式置位。</p>
      */
     private static volatile boolean registryReady;
 
-    /** 服务器启动后置位；由 {@code ModularCellConfig} 转发。 */
+    /** 服务器启动后置位；由 {@code ModularCellConfig} 转发过来。 */
     static void markRegistryReady() {
         registryReady = true;
     }
@@ -53,7 +52,7 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
 
     @Override
     public IConfigValueSerializer<ResourceLocation> getKeySerializer() {
-        return ItemIdSerializer.INSTANCE;
+        return KeySerializer.INSTANCE;
     }
 
     @Override
@@ -61,24 +60,26 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         return spec.id();
     }
 
-    // ---- 值：容量与速率 ----
+    @Override
+    public ComponentSpec createEntry(ResourceLocation id, ComponentValues values) {
+        return new ComponentSpec(id, values.capacity(), values.transfer(),
+                values.capacityMultiplier(), values.transferMultiplier());
+    }
+
+    // ---- 值：两个维度 + 两个倍率 ----
 
     @Override
     public IConfigValueSerializer<ComponentValues> getValueSerializer() {
-        return ValuesSerializer.INSTANCE;
+        return ValueSerializer.INSTANCE;
     }
 
     @Override
     public ComponentValues getValue(ComponentSpec spec) {
-        return new ComponentValues(spec.capacity(), spec.transfer());
+        return new ComponentValues(spec.capacity(), spec.transfer(),
+                spec.capacityMultiplier(), spec.transferMultiplier());
     }
 
-    @Override
-    public ComponentSpec createEntry(ResourceLocation id, ComponentValues values) {
-        return new ComponentSpec(id, values.capacity(), values.transfer());
-    }
-
-    // ---- 整条：文本形与配置文件的写法一致 ----
+    // ---- 整条 ----
 
     @Override
     public String serialize(ComponentSpec spec) {
@@ -86,7 +87,7 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         if (spec == null) {
             return "";
         }
-        return spec.id() + "=" + spec.capacity() + ":" + spec.transfer();
+        return spec.id() + "=" + getValue(spec);
     }
 
     @Override
@@ -96,37 +97,30 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         }
         String trimmed = text.trim();
         int equals = trimmed.indexOf('=');
+        // 只写 id（没有 '='）合法：两个值都当 0，等于声明「这个物品算组件、但不贡献任何东西」。
         String idText = equals < 0 ? trimmed : trimmed.substring(0, equals).trim();
+        String valuesText = equals < 0 ? "" : trimmed.substring(equals + 1).trim();
 
-        IDeserializeResult<ResourceLocation> parsedId = ItemIdSerializer.INSTANCE.deserialize(idText);
-        var id = parsedId.getResult().orElse(null);
+        var key = KeySerializer.INSTANCE.deserialize(idText);
+        var id = key.getResult().orElse(null);
         if (id == null) {
-            return IDeserializeResult.failure(parsedId.getDiagnostics());
+            return IDeserializeResult.failure(key.getDiagnostics());
         }
-        if (equals < 0) {
-            return IDeserializeResult.success(new ComponentSpec(id, 0L, 0L));
-        }
+        var values = ValueSerializer.INSTANCE.deserialize(valuesText);
+        var parsedValues = values.getResult().orElse(new ComponentValues(0L, 0L,
+                ComponentValues.NO_MODIFIER, ComponentValues.NO_MODIFIER));
+        var spec = createEntry(id, parsedValues);
 
-        IDeserializeResult<ComponentValues> parsedValues =
-                ValuesSerializer.INSTANCE.deserialize(trimmed.substring(equals + 1));
-        var values = parsedValues.getResult().orElse(null);
-        if (values == null) {
-            // 值写错不等于条目无效：给 0 并带诊断，保留 id 让它仍然看得见。
-            var spec = new ComponentSpec(id, 0L, 0L);
-            return IDeserializeResult.partialSuccess(spec, parsedValues.getDiagnostics());
+        var diagnostics = new java.util.ArrayList<String>(values.getDiagnostics());
+        if (!registryReady || BuiltInRegistries.ITEM.containsKey(id)) {
+            return diagnostics.isEmpty()
+                    ? IDeserializeResult.success(spec)
+                    : IDeserializeResult.partialSuccess(spec, diagnostics);
         }
-
-        var spec = new ComponentSpec(id, values.capacity(), values.transfer());
         // 物品不存在只是「可疑」而不是「语法错」：邻居没装、或将来才加的物品都长得这样，
         // 所以给 partialSuccess 带诊断，让人看见原因但条目仍然存得下。
-        if (!itemExists(id)) {
-            return IDeserializeResult.partialSuccess(spec, localize(KEY + ".warn.unknownItem", id.toString()));
-        }
-        if (spec.isEmpty()) {
-            // 两个值都是 0：它不贡献任何东西，却会把内置识别挡掉（识别只看这张表）。这一条最容易被误写。
-            return IDeserializeResult.partialSuccess(spec, localize(KEY + ".warn.disablesItem", id.toString()));
-        }
-        return IDeserializeResult.success(spec);
+        diagnostics.add(localize(KEY + ".warn.unknownItem", id.toString()));
+        return IDeserializeResult.partialSuccess(spec, diagnostics);
     }
 
     @Override
@@ -140,19 +134,12 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         return localize(KEY + ".syntax");
     }
 
-    /** 物品是否存在；注册表未就绪时一律当作「存在」，不产生诊断。 */
-    private static boolean itemExists(ResourceLocation id) {
-        return !registryReady || BuiltInRegistries.ITEM.containsKey(id);
-    }
+    // ---- 两列的序列化器 ----
 
-    private static String localize(String key, Object... args) {
-        return Component.translatable(key, args).getString();
-    }
+    /** 键列：物品 id。 */
+    private static final class KeySerializer implements IConfigValueSerializer<ResourceLocation> {
 
-    /** 键列：物品 id 本身。 */
-    private static final class ItemIdSerializer implements IConfigValueSerializer<ResourceLocation> {
-
-        static final ItemIdSerializer INSTANCE = new ItemIdSerializer();
+        static final KeySerializer INSTANCE = new KeySerializer();
 
         @Override
         public String serialize(ResourceLocation id) {
@@ -161,9 +148,14 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
 
         @Override
         public IDeserializeResult<ResourceLocation> deserialize(String text) {
-            ResourceLocation id = text == null ? null : ResourceLocation.tryParse(text.trim());
-            return id != null ? IDeserializeResult.success(id) : IDeserializeResult.failure(
-                    localize(KEY + ".error.badId"));
+            if (text == null || text.isBlank()) {
+                return IDeserializeResult.failure(localize(KEY + ".error.empty"));
+            }
+            var id = ResourceLocation.tryParse(text.trim());
+            // 不带命名空间会被当成 minecraft:xxx，匹配不上任何东西——这属于最容易踩的坑，所以单独报。
+            return id == null
+                    ? IDeserializeResult.failure(localize(KEY + ".error.badId"))
+                    : IDeserializeResult.success(id);
         }
 
         @Override
@@ -177,10 +169,10 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         }
     }
 
-    /** 值列：{@code 容量:速率}，两个值都可以省略。 */
-    private static final class ValuesSerializer implements IConfigValueSerializer<ComponentValues> {
+    /** 值列：`容量:速率[:容量倍率[:速率倍率]]`。 */
+    private static final class ValueSerializer implements IConfigValueSerializer<ComponentValues> {
 
-        static final ValuesSerializer INSTANCE = new ValuesSerializer();
+        static final ValueSerializer INSTANCE = new ValueSerializer();
 
         @Override
         public String serialize(ComponentValues values) {
@@ -190,27 +182,47 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         @Override
         public IDeserializeResult<ComponentValues> deserialize(String text) {
             String trimmed = text == null ? "" : text.trim();
+            if (trimmed.isEmpty()) {
+                // 值列留空是合法写法：两个维度都是 0。
+                return IDeserializeResult.success(new ComponentValues(0L, 0L,
+                        ComponentValues.NO_MODIFIER, ComponentValues.NO_MODIFIER));
+            }
             String[] parts = trimmed.split(":", -1);
-            if (parts.length > 2) {
-                return IDeserializeResult.partialSuccess(
-                        new ComponentValues(parseValueOr0(parts[0]), parseValueOr0(parts[1])),
-                        localize(KEY + ".error.tooManyValues"));
+            if (parts.length > 4) {
+                return IDeserializeResult.partialSuccess(fromParts(parts), localize(KEY + ".error.tooManyValues"));
             }
-            Long capacity = parseValue(parts[0]);
-            if (capacity == null) {
-                return IDeserializeResult.partialSuccess(new ComponentValues(0L, 0L),
-                        localize(KEY + ".error.badValue", parts[0]));
-            }
-            long transfer = 0L;
-            if (parts.length > 1) {
-                Long parsedTransfer = parseValue(parts[1]);
-                if (parsedTransfer == null) {
-                    return IDeserializeResult.partialSuccess(new ComponentValues(capacity, 0L),
-                            localize(KEY + ".error.badValue", parts[1]));
+            var diagnostics = new java.util.ArrayList<String>();
+            for (int i = 0; i < Math.min(parts.length, 2); i++) {
+                if (parseLong(parts[i]) == null) {
+                    diagnostics.add(localize(KEY + ".error.badValue", parts[i]));
                 }
-                transfer = parsedTransfer;
             }
-            return IDeserializeResult.success(new ComponentValues(capacity, transfer));
+            for (int i = 2; i < parts.length; i++) {
+                if (parseDouble(parts[i]) == null) {
+                    diagnostics.add(localize(KEY + ".error.badMultiplier", parts[i]));
+                }
+            }
+            var values = fromParts(parts);
+            // 值与倍率全是默认值、且没写错时会走到这里：这是「把这个物品禁用」的写法，值得提醒一次。
+            if (diagnostics.isEmpty() && values.toString().equals("0:0")) {
+                return IDeserializeResult.partialSuccess(values, localize(KEY + ".warn.disablesItem"));
+            }
+            return diagnostics.isEmpty()
+                    ? IDeserializeResult.success(values)
+                    : IDeserializeResult.partialSuccess(values, diagnostics);
+        }
+
+        /** 解析失败的段按默认值算：条目保留下来、只附一条诊断，不让整行失效。 */
+        private static ComponentValues fromParts(String[] parts) {
+            long capacity = parts.length > 0 ? orZero(parseLong(parts[0])) : 0L;
+            long transfer = parts.length > 1 ? orZero(parseLong(parts[1])) : 0L;
+            double capacityMultiplier = parts.length > 2
+                    ? orDefault(parseDouble(parts[2]))
+                    : ComponentValues.NO_MODIFIER;
+            double transferMultiplier = parts.length > 3
+                    ? orDefault(parseDouble(parts[3]))
+                    : ComponentValues.NO_MODIFIER;
+            return new ComponentValues(capacity, transfer, capacityMultiplier, transferMultiplier);
         }
 
         @Override
@@ -222,10 +234,19 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         public String getValidValuesDescription() {
             return localize(KEY + ".syntax.values");
         }
+
+        private static long orZero(Long value) {
+            return value == null ? 0L : value;
+        }
+
+        private static double orDefault(Double value) {
+            return value == null ? ComponentValues.NO_MODIFIER : value;
+        }
     }
 
-    /** 解析一个数值：空串当 0；不是数字给 {@code null}（由调用方转成诊断）。 */
-    private static Long parseValue(String text) {
+    // ---- 解析小工具 ----
+
+    private static Long parseLong(String text) {
         if (text == null || text.isBlank()) {
             return 0L;
         }
@@ -236,9 +257,21 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         }
     }
 
-    /** 解析一个数值，失败当 0——用于「已经决定要保留条目、只是记一条诊断」的场合。 */
-    private static long parseValueOr0(String text) {
-        Long value = parseValue(text);
-        return value == null ? 0L : value;
+    private static Double parseDouble(String text) {
+        if (text == null || text.isBlank()) {
+            return ComponentValues.NO_MODIFIER;
+        }
+        try {
+            double value = Double.parseDouble(text.trim());
+            // NaN / Infinity 会一路乘进公式：NaN 让整块模块容量变 0，Infinity 直接顶到 Long.MAX_VALUE。
+            // 这不是「坏数据不参与计算」能兜住的，必须在入口挡住。
+            return Double.isFinite(value) ? Math.max(0.0D, value) : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static String localize(String key, Object... args) {
+        return Component.translatable(key, args).getString();
     }
 }

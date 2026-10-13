@@ -94,7 +94,7 @@ public final class BuiltInComponents {
                 if (!tier.id().endsWith(source.tierSuffix())) {
                     continue;
                 }
-                all.add(new ComponentSpec(
+                all.add(ComponentSpec.of(
                         ResourceLocation.fromNamespaceAndPath(source.namespace(), INTERFACE_PREFIX + tier.id()),
                         tier.capacity(), 0L));
             }
@@ -103,7 +103,7 @@ public final class BuiltInComponents {
             boolean capacitySide = rule.channel() == Channel.CAPACITY;
             for (String prefix : rule.prefixes()) {
                 for (var tier : StorageComponentTier.values()) {
-                    all.add(new ComponentSpec(
+                    all.add(ComponentSpec.of(
                             ResourceLocation.fromNamespaceAndPath(rule.namespace(), prefix + tier.id()),
                             capacitySide ? tier.capacity() : 0L,
                             capacitySide ? 0L : tier.capacity()));

@@ -71,7 +71,7 @@
 
 ### M8 工程补件 — ⬜ P3
 
-- ✅ 配置项（MezzConfig 托管，服务端归属、游戏内可编辑）：可调的是**三个系数**（b / bv / f_in）；k 与 kv 乘的是组件自己带来的值，属组件常量，不进配置；另有 `componentGains` 额外组件表，按 `<物品 id>=<容量值>:<速率值>` 声明任意物品的贡献，优先级高于内置识别。速率与输入上限（`EnergyCellTier` 的 `V_max` / `V_in_max`）**仍不可配**——它们跟着方块等级走
+- ✅ 配置项（MezzConfig 托管，服务端归属、游戏内可编辑）：可调的是**三个系数**（b / bv / f_in）；k 与 kv 乘的是组件自己带来的值，属组件常量，不进配置；另有 `componentGains` 存储组件清单，按 `<物品 id>=<容量值>:<速率值>[:<容量倍率>[:<速率倍率>]]` 声明每个组件的贡献与修正倍率（倍率为 1.0 时可省），这张表就是识别的唯一来源。速率与输入上限（`EnergyCellTier` 的 `V_max` / `V_in_max`）**仍不可配**——它们跟着方块等级走
 - 旧存档 `serverconfig/ae2modularcells/cells.ini` 里的 `componentDiscount` / `transferDiscount` 两行，在 k / kv 退出配置后已成孤儿键（不生效，也不致加载失败），可手动删。另注：`componentGains` 的优先级最高，对**内置组件**也能逐条覆盖甚至置 0——那是「额外声明」的副作用，不是一个开关
 - 配置界面的语言键约定（对齐 MezzConfig 自己的键形，别猜）：分类名 = `<langKey>.<分类>`；分类描述 = 同 key 再加 `.description`；值名 = `<langKey>.<分类>.<值>`；值描述 = 同 key 再加 `.description`。`valueValues` / `defaultValue` / 「需要重启」这类**通用标签由 MezzConfig 自带**，mod 侧不用写。**窗口标题是它自动生成的（`<ModId> Configuration`），没有对应键**——`IConfigSchemaBuilder` 上也没有声明名字的 API。缺键时看实机日志里 `ConfigTranslationChecker` 的清单，它会逐字列出要补的键
 - ⬜ `modaccessor` / 访问转换（仅当确需访问 AE2 非公开成员时接入，届时补 `mods_accessor.cfg`）
@@ -93,9 +93,9 @@
 ### 公式与系数
 
 ```
-D    = (A + Σ S_i × k)  × (1 + b  × C)      单模块容量（Σ 只累加**存储组件**：AE2 1k~256k、MEGA cell_component_*）
+D    = (A + Σ S_i  × m_i  × k)  × (1 + b  × C)      单模块容量（Σ 只累加**存储组件**：AE2 1k~256k、MEGA cell_component_*）
 T    = Σ D_j                                 总容量（逐块求和）
-D_v  = (V + Σ Sv_i × kv) × (1 + bv × C)      单模块速率（Σ 只累加**能量存储组件**：AppFlux core_1k~256m）
+D_v  = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C)      单模块速率（Σ 只累加**能量存储组件**：AppFlux core_1k~256m）
 T_v  = min(Σ D_vj, Σ V_max_j)                总速率（上限也是逐块之和）
 T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 ```
