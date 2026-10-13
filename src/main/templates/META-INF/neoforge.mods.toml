@@ -39,6 +39,17 @@ versionRange="*"
 ordering="NONE"
 side="BOTH"
 
+# MezzConfig：配置层的宿主库（mezz 出品）。本模组的配置由它托管，而游戏内的配置编辑界面由配套的
+# MezzConfig GUI 提供——那是独立的客户端 mod，只在开发环境装着（见 build.gradle 的 clientLocalRuntime）。
+# 本体是**必需**依赖：配置在模组构造期就要建好，缺它本模组起不来。版本地板取 0.5.0——本模组用到的
+# Configs / IConfigSchemaBuilder / addStringList 都在那条版本线上。
+[[dependencies.${mod_id}]]
+modId="mezz_config"
+type="required"
+versionRange="[0.5.0,1.0.0)"
+ordering="AFTER"
+side="BOTH"
+
 # JEI 可选、且只在客户端：配方转移入口（从 JEI 配方页把材料导进编辑区）是唯一用到的面，
 # IRecipeTransferListener / IRecipeTransferContext / RecipeTransferResult 均自 19.52.0 起。
 # 上限压在 19.x：20.0.0 换了配方类型体系，是另一条 Minecraft 线。

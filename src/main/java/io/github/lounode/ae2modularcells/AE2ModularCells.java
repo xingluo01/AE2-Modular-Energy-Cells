@@ -3,7 +3,6 @@ package io.github.lounode.ae2modularcells;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.config.ModConfig;
 
 import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
 
@@ -27,12 +26,9 @@ public final class AE2ModularCells {
     }
 
     public AE2ModularCells(IEventBus modBus, ModContainer container) {
-        // 配置先登记：识别路径一开跑（读存档、建结构）就要用到系数。
-        container.registerConfig(ModConfig.Type.COMMON, ModularCellConfig.SPEC);
-        // 系数是现读的，但「额外组件表」是字符串列表，解析结果要缓存——加载与重载时各重建一次。
-        // 分挂两个具体子类，不挂抽象父类：父类会不会被派发没有本地证据（AE2 同版本也分挂）。
-        modBus.addListener(ModularCellConfig::onConfigLoading);
-        modBus.addListener(ModularCellConfig::onConfigReloading);
+        // 配置：schema 由 MezzConfig 托管，必须在这里就建好。配置界面靠枚举「已 build 的 schema」发现配置，
+        // 而本类的静态初始化只会在第一次被碰时跑——那个人可能是很晚才发生的容量计算。
+        ModularCellConfig.init();
         AEModularCellsRegistries.register(modBus);
     }
 }

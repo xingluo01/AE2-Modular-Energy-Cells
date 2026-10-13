@@ -135,10 +135,17 @@ dependencies {
     clientCompileOnly(libs.jei)
     clientCompileOnly(libs.emi)
 
+    // MezzConfig：配置层的宿主库（游戏内配置界面由它提供）。
+    // API 只作编译期依赖；运行期本体走 localRuntime——服务端也要，配置是服务端归属、要下发给客户端。
+    // 客户端源集要显式声明，main 侧的 compileOnly 看不到那里。
+    compileOnly(libs.mezz.config.api)
+    clientCompileOnly(libs.mezz.config.api)
+
     // ---- 开发运行期 ----
     // AE2 与 GuideME 交付时由整合包提供，这里只是让开发环境跑得起来。
     localRuntime 'curse.maven:applied-energistics-2-223794:7027323'
     localRuntime 'maven.modrinth:guideme:21.1.15'
+    localRuntime(libs.mezz.config)
     // JEI / EMI 与它们的桥都是纯客户端 mod，所以走 clientLocalRuntime：一来 server 与 datagen 运行不需
     // 要配方查看器，二来 JEI 在无客户端的进程里初始化会崩（它的构造期碰 Minecraft.getInstance()，
     // datagen 里那个实例是 null）——挂在 localRuntime 上会让 runData 直接失败。
@@ -186,6 +193,10 @@ dependencies {
     clientLocalRuntime(libs.embeddium)
     // Modern UI：UI 渲染库。本模组屏幕走 AE2 样式系统，装着它才能早点撞见两者共存的渲染问题。
     clientLocalRuntime(libs.modern.ui)
+    // MezzConfig GUI：给 MezzConfig 托管的配置提供游戏内编辑界面。它本身是个客户端 mod
+    // （client_side: required），服务端与 datagen 都不需要，所以只进 clientLocalRuntime。
+    // 本模组不需要引它的 API——界面靠 MezzConfig 自己枚举已 build 的 schema，mod 侧没有注册入口。
+    clientLocalRuntime(libs.mezz.config.gui)
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -210,6 +221,12 @@ repositories {
     maven {
         name = 'BlameJared'
         url = 'https://maven.blamejared.com'
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://maven.blamejared.com' }
+        }
+        filter { includeGroup 'net.mezzdev.config' }
     }
     exclusiveContent {
         forRepository {

@@ -37,7 +37,7 @@
 | `common.logic` | 结构检测（`MultiblockScanner`）、容量汇总（`StructureStats`）、组件记账。不碰菜单、屏幕与世界 tick |
 | `common.energy` | （空）能量池与网格接入实际落在 `common.block.entity`：方块实体继承 AE2 的 `AENetworkedPoweredBlockEntity`，储能就存在它身上 |
 | `common.menu` | 菜单及其逻辑（组件槽、总览数据的同步） |
-| `common.config` | 模组配置：两条公式的五个系数与 `componentGains` 额外组件表（NeoForge `ModConfigSpec`，COMMON 类型） |
+| `common.config` | 模组配置：两条公式的五个系数与 `componentGains` 额外组件表（MezzConfig 托管，服务端归属、游戏内可编辑） |
 | `common.item` | 存储组件物品与方块物品 |
 | `integration/…` | 邻居适配，一个包一个邻居（客户端侧在 `client/integration/…`） |
 | `client` | 客户端源集根：屏幕、面板、渲染 |
@@ -67,10 +67,10 @@
 
 ### 2.2 模块方块与组件槽
 
-- 每个方块自带 **1 / 2 / 3 个组件槽**（按等级），槽里插的是**现成的组件**，本模组不自制组件物品。识别入口在 `common/StorageComponents`（`gainOf` / `magnitudeOf`），按优先级三层：配置（`componentGains`）→ AE2 公开接口 `IStorageComponent` → 内置规则表 `common/BuiltInComponents`。一个组件可以同时给两个维度（`ComponentGain`），现有来源各只给一个：**存储组件**（AE2 的 `1k ~ 256k`、MEGA Cells 的 `cell_component_1m ~ 256m`）给**容量**；**能量存储组件**（AppFlux 的 `core_1k ~ 256m`）与 OMNI Cells 的组件给**速率**。
+- 每个方块自带 **1 / 2 / 3 个组件槽**（按等级），槽里插的是**现成的组件**，本模组不自制组件物品。识别入口在 `common/StorageComponents`（`gainOf` / `magnitudeOf`），按优先级三层：配置（`componentGains`）→ AE2 公开接口 `IStorageComponent` → 内置规则表 `common/BuiltInComponents`。一个组件可以同时给两个维度（`ComponentGain`），现有来源各只给一个：**存储组件**（AE2 的 `1k ~ 256k`、MEGA Cells 的 `cell_component_1m ~ 256m`、OMNI Cells 的三组）给**容量**；**能量存储组件**（AppFlux 的 `core_1k ~ 256m`）给**速率**。
 - 组件同时影响容量与速率，折扣不同：容量侧 `S_i × k`（k = 0.2），速率侧 `Svi × kv`（kv = 0.0001）。
 - 插满还有数量加成：容量乘 `(1 + b × C)`（b = 2.0，故三级最多 ×3 / ×5 / ×7），速率乘 `(1 + bv × C)`（bv = 0.1）。`C` 是**这一块实际插了几个组件**（不是两侧各数一次）。
-- 两条公式的**唯一实现**在 `common/logic/CellMath.java`；五个系数的**默认值**在 `common/ModularCellConstants.java`，运行时取值来自 `common/config/ModularCellConfig`（`config/ae2modularcells-common.toml`）——实现阶段别在方块实体或菜单里再写一遍算式。
+- 两条公式的**唯一实现**在 `common/logic/CellMath.java`；五个系数的**默认值**在 `common/ModularCellConstants.java`，运行时取值来自 `common/config/ModularCellConfig`（MezzConfig 托管，服务端归属、由服务端下发给客户端，游戏内可编辑）——实现阶段别在方块实体或菜单里再写一遍算式。游戏内那个编辑界面来自配套的 **MezzConfig GUI**（独立的客户端 mod `mezz_config_gui`，本项目只在开发环境装着）；配置文件本身由 MezzConfig 管，落点在存档侧，路径可在 GUI 里看到（它不再走 `config/` 目录）。
 - **「升级」的两种含义要分开**：给方块插/换存储组件是**逐块升级**，结构不受影响——需求 2 说的就是这件事；而**替换更高等级的方块**等同于拆掉重建：检测遇异等级整体放弃（§2.6），过渡期结构不成立，于是 GUI 关闭、组件掉落（§2.3）。别把两者混成一条路径实现。
 
 ### 2.3 多方块结构

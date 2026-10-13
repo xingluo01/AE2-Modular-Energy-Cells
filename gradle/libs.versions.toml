@@ -51,5 +51,13 @@ ae2-omni-cells = { module = "maven.modrinth:ae2-omni-cells", version = "k444ySGT
 # 不引它的 API、不加编译期依赖。坐标同样双钉位（该仓有 forge/neoforge 两条线，写版本号会解析错那条）。
 construction-wand = { module = "maven.modrinth:construction-wand-kots", version = "cFpoCw3t" }
 
+# ---- 配置库：MezzConfig（mezz 出品，JEI 作者）----
+# 配置层由它托管，游戏内编辑界面由配套的 MezzConfig GUI 提供（GUI 是独立 mod，只进开发环境）。
+# 两者都在 build.gradle 已有的 BlameJared 仓库里，不需要新仓库。
+# 注意 GUI 的版本号带 MC 前缀（mc1.21.1-）——它自己的版本线与其他件不同。
+mezz-config-api = { module = "net.mezzdev.config:mezz_config-1.21.1-config-api", version = "0.6.6" }
+mezz-config = { module = "net.mezzdev.config:mezz_config-1.21.1-neoforge", version = "0.6.6" }
+mezz-config-gui = { module = "net.mezzdev.config:mezz_config_gui-1.21.1-neoforge", version = "mc1.21.1-0.5.5" }
+
 [plugins]
 modDevGradle = { id = "net.neoforged.moddev", version.ref = "modDevGradle" }

@@ -18,7 +18,7 @@ import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
  *
  * <p>符号：{@code S_i} 与 {@code Sv_i} 都取自组件槽里同一个 {@link ComponentGain}——一个组件可以同时贡献两个
  * 维度；{@code C} 是该模块实际插了几个组件；{@code k} / {@code kv} / {@code b} / {@code bv} / {@code f_in}
- * 五项系数由配置提供（默认值在 {@link ModularCellConstants}，改 {@code config/ae2modularcells-common.toml}）。</p>
+ * 五项系数由配置提供（默认值在 {@link ModularCellConstants}，运行时取 {@code ModularCellConfig}，游戏内可编辑）。</p>
  */
 public final class CellMath {
 
