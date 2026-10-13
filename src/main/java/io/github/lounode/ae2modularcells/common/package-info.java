@@ -10,7 +10,9 @@
  * （能量池与 AE2 的 {@code IAEPowerStorage} 适配）、{@code common.menu}（菜单与其逻辑）、
  * {@code common.item}（方块物品）。</p>
  *
- * <p>组件口径：槽位里插的是现成的存储组件（AE2 的 1k ~ 256k、MEGA Cells 的 1m ~ 256m），不是本模组
- * 自制的物品；档位与数值表见 {@link io.github.lounode.ae2modularcells.common.StorageComponentTier}。</p>
+ * <p>组件口径：槽位里插的是现成的存储组件（AE2 的 1k ~ 256k、MEGA Cells 的 1m ~ 256m、AppFlux 的
+ * {@code core_*}、AE2 OMNI Cells 的组件），不是本模组自制的物品。识别按优先级走三条路（配置 → AE2 公开
+ * 接口 → 内置规则表），见 {@link io.github.lounode.ae2modularcells.common.StorageComponents}；档位数值表见
+ * {@link io.github.lounode.ae2modularcells.common.StorageComponentTier}。</p>
  */
 package io.github.lounode.ae2modularcells.common;

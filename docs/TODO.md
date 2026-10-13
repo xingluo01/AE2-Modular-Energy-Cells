@@ -56,8 +56,8 @@
 
 ### M6 槽位与配方 — ⬜ P2
 
-- ✅ 槽位识别：只走 AE2 的公开面 `IStorageComponent`（`isStorageComponent` + `getBytes`）——AE2 `1k ~ 256k`、MEGA Cells `cell_component_1m ~ 256m`、AppFlux `core_1k ~ 256m` 都在内。本模组**不自制**组件物品；`StorageComponentTier` 只作对照表（待定项 10 的识别口径至此定稿）
-- ✅ **邻居组件的识别口径已用外部证据钉死**（本机没有那两个 jar，结论取自上游源码，证据见待定项 10）：MEGA Cells 直接复用 AE2 的 `StorageComponentItem`（`implements IStorageComponent`），走接口路径即可；AppFlux 的 `core_1k ~ core_256m` 是普通 `NormalItem`、**不实现**该接口，所以必须有按注册名的退回层——`integration/appflux/AppFluxComponents`（只比注册名字符串，不引邻居类型名）
+- ✅ 槽位识别：三层优先级——**配置**（`componentGains`，玩家与整合包可声明任意物品）→ **AE2 公开面** `IStorageComponent`（`isStorageComponent` + `getBytes`）→ **内置规则表** `common/BuiltInComponents`（按注册名认没实现接口的邻居）。本模组**不自制**组件物品；`StorageComponentTier` 是规则表的数值来源（待定项 10 的识别口径至此定稿）
+- ✅ **邻居组件的识别口径已用外部证据钉死**（本机没有那些 jar，结论取自上游源码，证据见待定项 10）：MEGA Cells 直接复用 AE2 的 `StorageComponentItem`（`implements IStorageComponent`），走接口路径即可；AppFlux 的 `core_1k ~ core_256m` 与 AE2 OMNI Cells 的三组组件都是普通物品、**不实现**该接口，所以按注册名认——规则表 `common/BuiltInComponents`（只比注册名字符串与前缀，不引邻居类型名，也不写第二份数值）
 - ⬜ 合成配方：三个等级模块（基础模块「比原版能源元件略贵或相当」）
 - ⬜ 数据生成或手写 JSON（本项目沿用姊妹项目口径：先手写，需要时再接 datagen）
 
@@ -71,7 +71,7 @@
 
 ### M8 工程补件 — ⬜ P3
 
-- ⬜ 配置项（数值可调：组件折扣 k / kv、数量加成 b / bv、输入比例 f_in、速率与输入上限；照需求 §7「数值集中、便于调整」）
+- ✅ 配置项（`config/ae2modularcells-common.toml`）：五个系数（k / b / kv / bv / f_in）可调；另有 `componentGains` 额外组件表，按 `<物品 id>=<容量值>:<速率值>` 声明任意物品的贡献，优先级高于内置识别。速率与输入上限（`EnergyCellTier` 的 `V_max` / `V_in_max`）**仍不可配**——它们跟着方块等级走
 - ⬜ `modaccessor` / 访问转换（仅当确需访问 AE2 非公开成员时接入，届时补 `mods_accessor.cfg`）
 - 🔄 开发环境已补 **Applied Generators（应用发电机）**（`maven.modrinth:y1qmWFWM:TW2EMLE6`，需 AE2 + Glodium + AppFlux）：FE 侧电源 + AppFlux 折算，用来堆 10^5 ~ 10^6 AE/t 的稳态负载。**尚未实机压测**——速率的触顶行为与 f_in 折半目前仍停在算术推演
 - ⬜ 发布流程（Modrinth/CurseForge workflow、`icon.png`、`logoFile`）
@@ -102,12 +102,12 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 |---|---:|---|
 | 结构边长 | 3 – 16 | `ModularCellConstants.MIN_SIDE` / `MAX_SIDE` |
 | 方块数上界 | 4 096 | `ModularCellConstants.MAX_BLOCKS` |
-| 组件容量折扣 k（存储组件→容量） | 0.005（可配 0.001 ~ 0.01） | `ModularCellConstants.COMPONENT_DISCOUNT` |
-| 容量数量加成 b | 0.5 | `ModularCellConstants.CAPACITY_COUNT_BONUS` |
+| 组件容量折扣 k（存储组件→容量） | 0.2（可配 0.001 ~ 0.5） | `ModularCellConstants.COMPONENT_DISCOUNT`（默认值）→ `ModularCellConfig` |
+| 容量数量加成 b | 2.0 | `ModularCellConstants.CAPACITY_COUNT_BONUS` → 配置 |
 | 组件速率折扣 kv（能量存储组件→速率） | 0.0001 | `ModularCellConstants.TRANSFER_DISCOUNT` |
-| 速率数量加成 bv | 0.1 | `ModularCellConstants.TRANSFER_COUNT_BONUS` |
-| 输入比例 f_in | 0.5 | `ModularCellConstants.INPUT_RATIO` |
-| 组件档位（同一张对照表，两条路各取所需） | AE2 `1k ~ 256k` / MEGA Cells `cell_component_1m ~ 256m` / AppFlux `core_1k ~ 256m` | `StorageComponentTier` |
+| 速率数量加成 bv | 0.1 | `ModularCellConstants.TRANSFER_COUNT_BONUS` → 配置 |
+| 输入比例 f_in | 0.5 | `ModularCellConstants.INPUT_RATIO` → 配置 |
+| 组件档位（规则表的数值来源） | AE2 `1k ~ 256k` / MEGA Cells `cell_component_1m ~ 256m` / AppFlux `core_1k ~ 256m` / OMNI Cells 三组 1k ~ 256m | `StorageComponentTier` |
 
 ### 材料量参考（模块方块本身，不含石英/铁/红石/硅与组件）
 
@@ -132,14 +132,14 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 2. **核心选取规则**：✅ 已定——结构内**坐标最小**的那一块（= 立方体最小角），见 `MultiblockScanner.Layout`。与「最小角」重合是有意的：找范围与找核心成了同一件事，缓存里只记一个位置。混等级不影响这条（核心的等级不参与账目，只当它是一块普通模块）。
 3. **拆结构的能量归属**：整段拆掉时池里的能量去哪？——建议：留在核心方块（其余方块本就只是一份容量贡献，没有自己的能量账户）。
 4. **单块是否也吃上限**：✅ 已定——单块也照公式吃自己那一档的上限（`V_max` / `V_in_max`），不开特例。公式下 N=1 时 `T_v = min(D_v, 该档 V_max)`；基础模块插 1 个 256m 组件时 `D_v = (1 000 + 268 435 456 × 0.0001) × 1.1 ≈ 30 628 AE/t`，会被这一档的 16 000 夹到 16 000。
-5. **组件折扣是否开成配置项**：k 的需求给了区间（0.001 ~ 0.01，默认 0.005），kv 目前是定值 0.0001；两者要不要一起可配（甚至按整合包调）？数值已在 `ModularCellConstants`，开配置就是接一层读取。
+5. **组件折扣是否开成配置项**：✅ 已定——五个系数（k / b / kv / bv / f_in）都进了配置（`config/ae2modularcells-common.toml`），`ModularCellConstants` 里的常量降为默认值。
 6. **组件槽是否热插拔**：结构成型期间取出组件，容量掉到当前能量之下怎么办（AE2 原版的处理是允许超额、能量慢慢耗掉）？实现时对齐 AE2 上游行为。
 7. **破坏任一方块后**：✅ 已定——破坏时先把整段清成独立元件（按被拆那块手里的范围），再从六个邻居各自重算（需求 3.2 的口径）。
 8. **速率触顶的接受度**：✅ 已解决——上限改为**逐块之和**后「越建越快」自然成立，单块自己的上限只在单块时生效。要调的是每档的 `V_max` / `V_in_max`（`EnergyCellTier`）。原描述：三档 V_max 是单模块基础速率的 16 倍，而最小结构 27 块——无组件时 3³ 就已顶格，扩建后组件对速率也基本只用于补回已被上限吃掉的部分。若希望「越建越快」，要么擑高 V_max，要么让 V_max 随边长缩放。
 9. **f_in 取 0.5 还是 1.0**：需求给的是「0.5 或 1.0」，当前取 0.5（充能比放电慢）。一个数就能换。
 10. **邻居组件的识别口径**：✅ 已定——只走 AE2 的公开物品接口 `IStorageComponent`（`isStorageComponent` + `getBytes`），**只对确实没有实现该接口的邻居**加一层按注册名的退回（不写「物品 → 档位」的数值表，数值仍只查 `StorageComponentTier`）。已用外部证据核对（代码级证据取自与本仓库依赖坐标对齐的上游源码）：
     - **MEGA Cells 4.11.0（`maven.modrinth:jjuIRIVr:RPG4EriK`，tag `4.11.0`）**：`megacells:cell_component_1m/4m/16m/64m/256m` 直接 `new appeng.items.materials.StorageComponentItem(p, mb * 1024)` → **实现了 `IStorageComponent`**，`getBytes = mb × 1,048,576`。走接口路径即可，**不需要**退回层。（同模组的 `bulk_cell_component` / `radioactive_cell_component` 是 `MaterialItem`、不实现该接口，但也不是 M 级存储组件，不在槽位目标集合内。）
-    - **AppFlux 1.21-2.1.5-neoforge（`maven.modrinth:appflux:4x40hq9D`）**：`appflux:core_1k/4k/16k/64k/256k/1m/4m/16m/64m/256m` 都是 `NormalItem extends appeng.items.AEBaseItem`（只 `extends Item`）→ **不实现 `IStorageComponent`**，接口路径必然漏判。退回层 `integration/appflux/AppFluxComponents`（命名空间 + `core_` 前缀 + 后缀查 `StorageComponentTier`）**必需且已实现**。
+    - **AppFlux 1.21-2.1.5-neoforge（`maven.modrinth:appflux:4x40hq9D`）**：`appflux:core_1k/4k/16k/64k/256k/1m/4m/16m/64m/256m` 都是 `NormalItem extends appeng.items.AEBaseItem`（只 `extends Item`）→ **不实现 `IStorageComponent`**，接口路径必然漏判。退回层由规则表 `common/BuiltInComponents` 的一条规则承担（命名空间 `appflux` + 前缀 `core_` + 后缀查 `StorageComponentTier`）。
     - AppFlux 的 `core_<档>` 里 k/m 指的是**字节（KiB）**（`ItemFECell` 构造 `kilobytes * 1024L`），与 AE2 组件的字节口径一致，所以能共用同一张档位表；`core_*` 本身不带 FE 能力，是它自产 FE 元件的合成材料。
 11. **终端样式档位 → 面板条数**：✅ 已定但可推翻——SMALL / MEDIUM / TALL / FULL → **4 / 6 / 8 / 填满窗口**条 18px 带（下限 4、上限 12，由 `EnergyModuleSlotSemantics.MIN_ROWS/MAX_ROWS` 定）。AE2 自己的 `TerminalStyle#getRows` 是「放得下几条的分数制」（1/4、2/4、3/4、全满），这里的行是固定 18px，直接给条数更好懂；想改回分数制只需改 `EnergyModuleTerminalScreen#targetBands` 一个方法。
 12. **频道占用**：✅ 已定——**不占频道**（与 AE2 上游一致）。上游的能源元件（普通与致密共用 EnergyCellBlockEntity）建节点时只挂 setIdlePowerUsage(0) 与 IAEPowerStorage / IGridTickable 服务，不加 REQUIRE_CHANNEL；全 AE2 用该旗标的是 Drive、ME 箱、合成单元、空间塔、P2P、接口、样板供应器等设备，能源元件不在其中。本模组照此：整段由核心接进网格，但核心不要求频道；非核心块靠 getGridConnectableSides 返回空集，本来就不接网格（只有一个网络节点）。

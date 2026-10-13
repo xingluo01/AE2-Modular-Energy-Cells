@@ -3,16 +3,18 @@ package io.github.lounode.ae2modularcells.common;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 可插入模块组件槽的存储组件档位与数值表。
+ * 内置档位数值表：一组「后缀 → 组件值」的对照，供按注册名认组件的规则使用（见 {@link BuiltInComponents}）。
  *
- * <p>槽位里放的不是本模组自制的东西，而是现成的存储组件：{@code 1k} ~ {@code 256k} 来自 AE2 本体，
- * {@code 1m} ~ {@code 256m} 来自 MEGA Cells（它缺席时这几档自然没人提供，槽位照常工作）。每一档的
- * {@link #capacity()} 同时参与两条公式——容量侧按 {@code k} 折扣计入、速率侧按 {@code kv} 折扣计入，
- * 见 {@link io.github.lounode.ae2modularcells.common.logic.CellMath}。</p>
+ * <p>槽位里放的不是本模组自制的东西，而是现成的存储组件：{@code 1k} ~ {@code 256k} 来自 AE2 本体、
+ * {@code 1m} ~ {@code 256m} 来自 MEGA Cells，AppFlux 的 {@code core_1k ~ core_256m} 与 AE2 OMNI Cells 的
+ * 组件也用同一套后缀。每一档的 {@link #capacity()} 就是那个组件本身的值：容量侧按 {@code k} 折扣、速率侧按
+ * {@code kv} 折扣计入模块公式，见 {@link io.github.lounode.ae2modularcells.common.logic.CellMath}。</p>
  *
- * <p>为什么把数值表钉在这里：折扣要乘的是「组件本身的值」，而识别组件靠物品（AE2 与 MEGA Cells 各自的
- * 物品类）。两边一旦对不上（模组改了数值、加了新档），公式还在按旧表算。所以档位与数值只此一处，
- * 集成层负责把物品映射到这里的档位。</p>
+ * <p>数值只此一处：识别路径（规则表、配置）都不写第二份数字，改了这张表，各条路径一起跟着变。</p>
+ *
+ * <p><b>它不再是「档位标尺」</b>：手势判「更低档 / 同档另一种」比的是组件数值本身
+ * （{@link ComponentGain#magnitude()}），不是这里的枚举序号——配置里新增的组件、或将来某个模组自己的档位
+ * 不一定对得上这张表，用序号当标尺会把它们整个挡在手势之外。</p>
  */
 public enum StorageComponentTier {
 

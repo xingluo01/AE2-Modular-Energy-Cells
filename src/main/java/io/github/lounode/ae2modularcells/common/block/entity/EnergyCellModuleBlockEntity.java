@@ -40,7 +40,6 @@ import io.github.lounode.ae2modularcells.common.block.StructurePart;
 import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 import io.github.lounode.ae2modularcells.common.ComponentGain;
-import io.github.lounode.ae2modularcells.common.StorageComponentTier;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage;
 import io.github.lounode.ae2modularcells.common.inventory.StructureComponentItemHandler;
@@ -1524,9 +1523,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         if (held.isEmpty() || !isFormed()) {
             return null;
         }
-        var heldTier = StorageComponents.tierOf(held);
-        if (heldTier == null) {
-            // 认不出档位就不动：没有标尺就无法判断「更低档」与「同档另一种」。
+        long heldMagnitude = StorageComponents.magnitudeOf(held);
+        if (heldMagnitude <= 0L) {
+            // 认不出量级就不动：没有标尺就无法判断「更低档」与「同档另一种」。
             return null;
         }
         boolean heldIsCapacity = StorageComponents.isCapacityComponent(held);
@@ -1543,9 +1542,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             }
         }
 
-        // 第二轮：同种、更低档（多件低档时取排在最前面的那一件）。
-        var lower = findSlot(modules, heldIsCapacity, currentTier -> currentTier != null
-                && currentTier.ordinal() < heldTier.ordinal());
+        // 第二轮：同种、更低档（多件低档时取排在最前面的那一件）。标尺是组件自己的数值，不是档位枚举的序号
+        // ——后者会把「数值对不上内置表」的组件（配置新增的、或将来其他模组的档位）挡在手势之外。
+        var lower = findSlot(modules, heldIsCapacity, currentMagnitude -> currentMagnitude < heldMagnitude);
         if (lower != null) {
             var old = lower.module().components.getStackInSlot(lower.slot());
             lower.module().components.setItemDirect(lower.slot(), held.copyWithCount(1));
@@ -1553,7 +1552,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         }
 
         // 第三轮：另一种类、同档（容量组件换能量组件，反过来也一样）。
-        var otherKindSameTier = findSlot(modules, !heldIsCapacity, heldTier::equals);
+        var otherKindSameTier = findSlot(modules, !heldIsCapacity, currentMagnitude -> currentMagnitude == heldMagnitude);
         if (otherKindSameTier != null) {
             var old = otherKindSameTier.module().components.getStackInSlot(otherKindSameTier.slot());
             otherKindSameTier.module().components.setItemDirect(otherKindSameTier.slot(), held.copyWithCount(1));
@@ -1570,12 +1569,12 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     /**
      * 在整段里找第一个满足条件的槽。
      *
-     * @param capacityKind true 表示只看容量类组件
-     * @param tierMatches  该槽里现有组件的档位要满足的条件
+     * @param capacityKind     true 表示只看容量类组件
+     * @param magnitudeMatches 该槽里现有组件的<b>量级</b>（见 {@link StorageComponents#magnitudeOf}）要满足的条件
      */
     @Nullable
     private static FoundSlot findSlot(List<EnergyCellModuleBlockEntity> modules, boolean capacityKind,
-            java.util.function.Predicate<StorageComponentTier> tierMatches) {
+            java.util.function.LongPredicate magnitudeMatches) {
         for (var module : modules) {
             int slots = module.components.size();
             for (int slot = 0; slot < slots; slot++) {
@@ -1583,8 +1582,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
                 if (current.isEmpty() || StorageComponents.isCapacityComponent(current) != capacityKind) {
                     continue;
                 }
-                var currentTier = StorageComponents.tierOf(current);
-                if (currentTier != null && tierMatches.test(currentTier)) {
+                long currentMagnitude = StorageComponents.magnitudeOf(current);
+                if (currentMagnitude > 0L && magnitudeMatches.test(currentMagnitude)) {
                     return new FoundSlot(module, slot);
                 }
             }

@@ -68,10 +68,22 @@ ordering="AFTER"
 side="BOTH"
 
 # AppFlux（Applied Flux）可选：core_1k ~ 256m（ME Energy Storage Component）覆盖全部十档，是槽位组件的
-# 主要来源。同 MEGA Cells：优先走 AE2 公开接口，要引其类型就进 integration 包加门禁，不设版本地板。
-# 它的必需前置（AE2 / GuideME / Glodium）都由玩家整合包负责，本模组不声明。
+# 主要来源。它的组件不实现 AE2 的公开接口，本模组按注册名认（common/BuiltInComponents 里的一条规则），
+# 只比字符串、不引其类型；不设版本地板。它的必需前置（AE2 / GuideME / Glodium）由玩家整合包负责，
+# 本模组不声明。
 [[dependencies.${mod_id}]]
 modId="appflux"
+type="optional"
+versionRange="*"
+ordering="AFTER"
+side="BOTH"
+
+# AE2 OMNI Cells 可选：三组存储组件（omni / complex_omni / quantum_omni，各 1k ~ 256m）是槽位组件的
+# 另一个来源。它的组件是纯 `new Item(...)`——既不实现 AE2 的公开接口、也不自带字节数，所以同样按注册名
+# 认（common/BuiltInComponents），只比字符串与前缀，不引其类型；不设版本地板。
+
+[[dependencies.${mod_id}]]
+modId="ae2omnicells"
 type="optional"
 versionRange="*"
 ordering="AFTER"
