@@ -8,6 +8,14 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
 description='''${mod_description}'''
+# 两个尺寸的图像：icon 是模组列表里的方形小图标（会被缩到 ModListScreen.ICON_SIZE），
+# banner 是详情面板里的横幅。路径不含 # 也不含 : ⇒ 按「本模组资源包的<b>根资源</b>」解析，
+# 即直接放在 src/main/resources/ 下——不是 assets/<modid>/。名字带模组前缀是为了不与别的模组撞名。
+# 对照：mezz_config 与 mezz_config_gui 的图标也是这么放的（mezz_config-icon.png 之类）。
+# 不写 iconBlur：默认的线性过滤在「大图缩到 32px」时更干净，最近邻会把细边缩成锯齿。
+# 也不用已废弃的 logoFile。
+iconFile="ae2modularcells-icon.png"
+bannerFile="ae2modularcells-banner.png"
 
 [[dependencies.${mod_id}]]
 modId="neoforge"
