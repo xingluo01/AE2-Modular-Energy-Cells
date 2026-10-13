@@ -31,18 +31,17 @@ import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlo
  *
  * <h2>怎么用</h2>
  * <pre>{@code
- * // 1) 注册等级（自己的 mod id 作命名空间）
- * public static final DeferredRegister<EnergyCellTier> TIERS =
- *         DeferredRegister.create(ModularCellTiers.TIER_REGISTRY_KEY, "yourmod");
- * public static final DeferredHolder<EnergyCellTier, EnergyCellTier> MY_TIER =
- *         TIERS.register("my_tier", () -> new EnergyCellTier("my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L));
+ * // 1) 注册等级。自己的 mod id 作命名空间；拿到的就是实例，不用建 DeferredRegister，
+ * //    也不用挂到模组总线，落盘由本模组在等级注册表那一次 RegisterEvent 完成。
+ * public static final EnergyCellTier MY_TIER = ModularCellsApi.registerTier(
+ *         "yourmod", "my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L);
  *
  * // 2) 注册方块套装（方块 + 方块物品 + 方块实体类型）
  * public static final DeferredModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellModule(
- *         BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER.get());
+ *         BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER);
  * }</pre>
  *
- * <p>两件注册器都要挂到模组总线上（{@code TIERS.register(modBus)} 等），本模组不做代管。</p>
+ * <p>你只需要自己的那三个注册器（方块 / 物品 / 方块实体类型），等级那一步本模组代管。</p>
  *
  * <p>脚本侧（KubeJS）走 {@link #registerModuleBlockSet}：那条路不用 {@code DeferredRegister}，直接交实例。
  * 两条路最终汇进同一张清单 {@link #allModuleBlockSets()}，后续处理（能力、模型、创造页）完全一样。</p>
@@ -60,12 +59,13 @@ import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlo
  * <h2>你还要自己准备的</h2>
  * <ul>
  *   <li><b>贴图</b>：方块模型由本模组的连通模型接管（{@code ConnectedModuleBakedModel}），它按等级 id 找贴图——
- *       你要提供 {@code <tierId>_energy_cell} 与 {@code <tierId>_energy_cell_light} 两张（前者是面板、后者是亮面），
- *       名字不匹配的表现是紫黑格。</li>
+ *       你要提供 {@code <tierId>_energy_cell} 与 {@code <tierId>_energy_cell_light} 两张（前者是面板、后者是亮面）。
+ *       缺了会回退到内置基础档的样子，并在资源重载日志里告警。</li>
  *   <li><b>方块状态与物品模型 JSON</b>：本模组不做数据生成，三档的 {@code blockstates/} 与 {@code models/} 是手写的
  *       可以照抄（{@code basic_energy_cell_module} 那三份 + 形状变体）。</li>
  *   <li><b>语言键</b>：{@code block.<你的命名空间>.<方块名>}。</li>
- *   <li><b>创造模式标签页</b>：本模组只把自己的方块放进自己的标签页，你的进你的。</li>
+ *   <li><b>创造模式标签页</b>：不用准备——你注册的方块会自动进本模组的「外部注册」页（但没有人这么注册时
+ *       它整页不会注册）。你也可以同时把它放进自己的标签页。</li>
  * </ul>
  *
  * <h2>边界</h2>
@@ -326,7 +326,24 @@ public final class ModularCellsApi {
             Collections.synchronizedList(new ArrayList<>());
 
     /**
-     * 登记一个晚到的等级（目前只有脚本会造出这种），真正注册发生在
+     * 注册一个等级（一行式，供其它模组用）。
+     *
+     * <p>不需要你建 {@code DeferredRegister}、也不需要挂到模组总线：这条路直接产出实例，拿到的就是你要的东西，
+     * 而真正落盘由本模组在等级注册表那一次 {@code RegisterEvent} 完成。等级 id 用你自己的命名空间。</p>
+     *
+     * <p>在你的模组构造器里调（与其它注册同时），拿到实例后交给
+     * {@link #registerEnergyCellModule(DeferredRegister.Blocks, DeferredRegister.Items,
+     * DeferredRegister, EnergyCellTier)}。参数含义见构造参数说明。</p>
+     */
+    public static EnergyCellTier registerTier(String namespace, String name, long capacity, long transferRate,
+            int componentSlots, long maxTransferRate, long maxInputRate) {
+        var tier = new EnergyCellTier(name, capacity, transferRate, componentSlots, maxTransferRate, maxInputRate);
+        registerLateTier(ResourceLocation.fromNamespaceAndPath(namespace, name), tier);
+        return tier;
+    }
+
+    /**
+     * 登记一个晚到的等级（脚本侧与 {@link #registerTier} 都走这里），真正注册发生在
      * {@link #registerLateTiers(RegisterEvent)}。
      *
      * <p>名字不叫 Script 是有意的：本方法完全不依赖 KubeJS，也不知道调用者是谁——它接的就是「一个已经建好、
@@ -358,8 +375,8 @@ public final class ModularCellsApi {
                 // （两个方块写了同一个 tierId 就是这个症状），所以在这里先拦下来并说清楚。
                 // 与内置三档或第三方撞名的那种跨源重复仍交给 NeoForge，它的异常足够清楚。
                 if (!seen.add(pending.id())) {
-                    LOGGER.error("More than one scripted module block claims tier {}; skipping it."
-                            + " Give them different tierId() values.", pending.id());
+                    LOGGER.error("More than one tier claims the id {}; skipping the rest."
+                            + " Energy cell tiers must use distinct ids.", pending.id());
                     continue;
                 }
                 event.register(ModularCellTiers.TIER_REGISTRY_KEY, pending.id(), pending::tier);

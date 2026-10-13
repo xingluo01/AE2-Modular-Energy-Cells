@@ -153,12 +153,13 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                             //
                             // 等级那两张按**方块自己的命名空间**取：第三方（Java 注册或 KubeJS 脚本）把贴图放在自己的
                             // 命名空间下，这里硬编码本模组会逼所有人往 ae2modularcells 里塞图、不同整合包互相覆盖。
-                            // 另五张是共享件（边框与通用块），只存在于本模组，所以走单参重载。
-                            sprite(event, set.id().getNamespace(), tier.id() + "_energy_cell"),
+                            // 缺了会回退到基础档（tierSprite），所以第三方可以先把档位跑通再补外观。
+                            // 另五张是共享件（边框与通用块），只存在于本模组，所以走单参重载、且不回退。
+                            tierSprite(event, set.id().getNamespace(), tier.id() + "_energy_cell"),
                             sprite(event, "ring_corner"),
                             sprite(event, "ring_side_hor"),
                             sprite(event, "ring_side_ver"),
-                            sprite(event, set.id().getNamespace(), tier.id() + "_energy_cell_light"),
+                            tierSprite(event, set.id().getNamespace(), tier.id() + "_energy_cell_light"),
                             sprite(event, "energy_cell_light_base"),
                             sprite(event, "unit")));
         }
@@ -213,18 +214,17 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
         return state.getOptionalValue(EnergyCellModuleBlock.FILL).orElse(0) / 4.0F;
     }
 
-    /**
-     * 取图集里的贴图，顺手确认它真的进了图集。共享贴图（边框与通用块）一律用本模组的命名空间。
-     *
-     * <p>这份模型的边框贴图不是由任何 {@code elements} 引用的（几何是手写的），所以它们靠
-     * {@code models/block/*.json} 的 {@code textures} 段声明入图集。声明漏了不会报错，只会拿到 missingno
-     * （紫黑格），那比编译器报错难查得多——所以下面按名字反查一次，对不上就告警。</p>
-     */
+    /** 共享贴图（边框与通用块）一律用本模组的命名空间；缺失时只告警、不回退（那五张是本模组自己的东西）。 */
     private static TextureAtlasSprite sprite(ModelEvent.ModifyBakingResult event, String textureName) {
         return sprite(event, AE2ModularCells.MOD_ID, textureName);
     }
 
-    /** 等级自己的两张贴图按传入的命名空间取——方块在哪个命名空间，那两张图就在哪。 */
+    /**
+     * 取图集里的贴图，顺手确认它真的进了图集。
+     *
+     * <p>手写几何的边框贴图不被任何 {@code elements} 引用，靠 {@code models/block/*.json} 的 {@code textures} 段
+     * 声明入图集；漏声明不会报错，只会拿到 missingno（紫黑格），那比编译错误难查得多。</p>
+     */
     private static TextureAtlasSprite sprite(ModelEvent.ModifyBakingResult event, String namespace, String textureName) {
         var texture = ResourceLocation.fromNamespaceAndPath(namespace, "block/" + textureName);
         var sprite = event.getTextureGetter().apply(new Material(TextureAtlas.LOCATION_BLOCKS, texture));
@@ -233,6 +233,29 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
                     texture, sprite.contents().name());
         }
         return sprite;
+    }
+
+    /**
+     * 等级自己的两张贴图：缺失时回退到内置基础档。
+     *
+     * <p>只对这两张回退，不挂在共用那个重载上：那五张共享件是本模组自己的东西，缺了就是本模组出了错，
+     * 拿面板图当边框只会把问题掩盖过去。</p>
+     *
+     * <p>告警保留——回退只是不让画面变成紫黑格，不代表那两张图不用准备。</p>
+     */
+    private static TextureAtlasSprite tierSprite(ModelEvent.ModifyBakingResult event, String namespace,
+            String textureName) {
+        var texture = ResourceLocation.fromNamespaceAndPath(namespace, "block/" + textureName);
+        var sprite = event.getTextureGetter().apply(new Material(TextureAtlas.LOCATION_BLOCKS, texture));
+        if (texture.equals(sprite.contents().name())) {
+            return sprite;
+        }
+        var fallback = textureName.endsWith("_light") ? "basic_energy_cell_light" : "basic_energy_cell";
+        LOG.warn("贴图 {} 没进方块图集（拿到的是 {}）——回退到内置基础档的 {}；要自己的外观就把两张图放进 {} 的 textures/block/ 下",
+                texture, sprite.contents().name(), fallback, namespace);
+        // 直接取，不再过 sprite()：否则回退失败时会再打一条告警，指向的还是同一个命名空间。
+        return event.getTextureGetter().apply(new Material(TextureAtlas.LOCATION_BLOCKS,
+                ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "block/" + fallback)));
     }
 
     @Override

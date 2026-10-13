@@ -222,13 +222,12 @@ OMNI 那三组的速率维乘的仍是 `kv`（`0.0001`），所以低档位下�
 其他模组要接入，就是两步：**注册一个等级**，再**注册它配套的方块套装**。用法（含脚本那条路）、要自备的资源与失败现象对照表在 [`INTEGRATION.md`](INTEGRATION.md)；本节讲的是这么设计的原因。
 
 ```java
-public static final DeferredRegister<EnergyCellTier> TIERS =
-        DeferredRegister.create(ModularCellTiers.TIER_REGISTRY_KEY, "yourmod");
-public static final DeferredHolder<EnergyCellTier, EnergyCellTier> MY_TIER =
-        TIERS.register("my_tier", () -> new EnergyCellTier("my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L));
+// 等级那一步本模组代管：不用建 DeferredRegister、也不用挂总线
+public static final EnergyCellTier MY_TIER = ModularCellsApi.registerTier(
+        "yourmod", "my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L);
 
 public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellModule(
-        BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER.get());
+        BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER);
 ```
 
 `ModularCellsApi#registerEnergyCellModule` 代做三件事：三者同名注册（方块 / 方块物品 / 方块实体类型）、把方块实体类型回填给方块、把套装塞进全局清单。
@@ -237,12 +236,12 @@ public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellMo
 
 - **能力注册**（`AEModularCellsRegistries#registerCapabilities`）按方块实体类型走一遍清单，给每个套装挂三条：`EnergyStorage.BLOCK`（只进不出的 FE 面）、`ItemHandler.BLOCK`（组件槽的自动化面）、`AECapabilities.IN_WORLD_GRID_NODE_HOST`。最后一条最容易漏——**AE2 只在它自己的类型表上批量注册网格主机能力**（上游 `InitCapabilityProviders` 遍历 `AEBlockEntities.BLOCK_ENTITY_TYPES`），第三方不补就接不上线缆。
 - **客户端模型替换**（`ConnectedModuleBakedModel#install`）也遍历清单、按 `set.block().getId()` 匹配烘焙表。遍历等级表是不行的：第三方可以给自己的方块取别名。
-- **创造页**反过来**只收本模组命名空间**的物品，第三方的方块进他们自己的标签页。
+- **创造页**反过来**只收本模组命名空间**的模块方块；第三方注册的进本模组的「外部注册」标签页（`AEModularCellsRegistries#EXTENSIONS_TAB`，按命名空间区分，没有外部套装时该页为空、客户端不显示）。
 - 本模组自己的三档走**同一个入口**（`AEModularCellsRegistries` 的 static 块），不给自己留特权路径，否则两条注册路径迟早会分叉。
 
 **第三方要自备的东西**：
 
-- 贴图两张，按等级 id 命名：`<tierId>_energy_cell`（面板）与 `<tierId>_energy_cell_light`（亮面）。连通模型按等级 id 找它们，名字不匹配的表现是紫黑格。
+- 贴图两张，按等级 id 命名：`<tierId>_energy_cell`（面板）与 `<tierId>_energy_cell_light`（亮面）。连通模型按等级 id 找它们；找不到时会**回退到内置基础档的贴图**并告警（不是紫黑格），所以第三方可以先把档位跑通再补外观。
 - 方块状态与物品模型 JSON：本模组不做数据生成，三档那几份可以照抄（形状变体 `fill=0..4` × `formed=false/true`，共十个）。
 - 语言键 `block.<命名空间>.<方块名>`。
 

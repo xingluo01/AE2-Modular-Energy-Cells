@@ -3,6 +3,7 @@
   "block.ae2modularcells.dense_energy_cell_module": "模块化致密能量单元",
   "block.ae2modularcells.superdense_energy_cell_module": "模块化超密能量单元",
   "itemGroup.ae2modularcells": "AE2 模块化能量单元",
+  "itemGroup.ae2modularcells.extensions": "AE2 模块化能量单元：外部注册",
   "gui.ae2modularcells.energy_module_terminal.title": "模块管理终端",
   "gui.ae2modularcells.module_label": "(%s, %s, %s)",
   "gui.ae2modularcells.tier_group_count": "模块数量：%s",

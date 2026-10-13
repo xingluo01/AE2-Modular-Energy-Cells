@@ -38,21 +38,20 @@
 
 稳定面是 `io.github.lounode.ae2modularcells.api` 包，这个包的路径与签名改动等于破坏兼容。等级本身不在这个包里，它的注册表键是 `ModularCellTiers.TIER_REGISTRY_KEY`，也就是 `ae2modularcells:energy_cell_tier`。
 
-Java 侧两步：
+Java 侧一行注册等级，再一行注册方块：
 
 ```java
-// 1) 注册等级（自己的 mod id 作命名空间）
-public static final DeferredRegister<EnergyCellTier> TIERS =
-        DeferredRegister.create(ModularCellTiers.TIER_REGISTRY_KEY, "yourmod");
-public static final DeferredHolder<EnergyCellTier, EnergyCellTier> MY_TIER =
-        TIERS.register("my_tier", () -> new EnergyCellTier("my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L));
+// 1) 注册等级（自己的 mod id 作命名空间）。拿到的就是实例——不用建 DeferredRegister，
+//    也不用挂到模组总线，落盘由本模组在等级注册表那一次 RegisterEvent 完成。
+public static final EnergyCellTier MY_TIER = ModularCellsApi.registerTier(
+        "yourmod", "my_tier", 400_000L, 2_000L, 2, 32_000L, 16_000L);
 
 // 2) 注册它配套的方块套装
 public static final DeferredModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellModule(
-        BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER.get());
+        BLOCKS, ITEMS, BLOCK_ENTITIES, MY_TIER);
 ```
 
-两件注册器都要自己挂到模组总线（`TIERS.register(modBus)` 等）。`EnergyCellTier` 构造参数依次是注册名、单模块基础容量（AE）、基础速率（AE/t）、组件槽位数、每块速率上限（AE/t）、每块输入上限（AE/t），注册名必须与 `DeferredRegister` 里的路径一致，否则启动期报错。
+`registerTier` 的参数依次是命名空间、等级名、单模块基础容量（AE）、基础速率（AE/t）、组件槽位数、每块速率上限（AE/t）、每块输入上限（AE/t）。等级名要与后面方块名的推导对得上（默认方块名就是 `<等级名>_energy_cell_module`）。如果你的等级不走这条路而是自建 `DeferredRegister`，注册名必须与它里的路径一致，否则启动期报错。
 
 `registerEnergyCellModule` 替你做三件事：三者同名注册、把方块实体类型回填给方块、把套装塞进全局清单。拿到的 `DeferredModuleBlockSet` 是三个句柄（`block()` / `item()` / `blockEntity()`），注册完成前 `get()` 会抛，要实例就走 `ModularCellsApi.allModuleBlockSets()`，或者先用 `isBound()` 问一句。
 
@@ -76,7 +75,7 @@ StartupEvents.registry('block', event => {
 
 三样，都只客户端需要：
 
-* `textures/block/<等级名>_energy_cell.png` 与 `..._light.png`——缺了是紫黑格。按「方块自己的命名空间 + 等级名」找，所以这两张必须放在方块所在命名空间下。
+* `textures/block/<等级名>_energy_cell.png` 与 `..._light.png`——按「方块自己的命名空间 + 等级名」找，所以这两张要放在方块所在命名空间下。缺了会**回退到内置基础档的贴图**（不是紫黑格），并在资源重载日志里留一条告警。
 * `blockstates/<方块名>.json` 与 `models/block|item/<方块名>.json`——缺了没有模型。变体是 `fill=0..4` × `formed=false/true`，内置三档那几份可以照抄。
 * 语言键 `block.<命名空间>.<方块名>`——缺了显示原始键名。
 
@@ -87,7 +86,7 @@ StartupEvents.registry('block', event => {
 引号里是日志片段，能直接搜。这些检查在服务器起的最后一步跑，只在服务端，客户端出问题不会被拦，只表现为显示不对。
 
 * 能放能储能，但接线缆没反应、永远不联网——套装没进全局清单。不会报错。
-* 紫黑格——贴图文件名或命名空间不对。
+* 资源重载日志里出现「贴图 ... 没进方块图集，回退到内置基础档的 basic_energy_cell」——那两张等级贴图没找到，方块看起来是基础档的样子。
 * 启动报 `has no registered block` / `has no registered item` / `has no registered block entity type`——套装三件里某一件没进注册表。
 * 启动 WARN `has no module block set; it will never appear in a structure`——那个等级没有配套方块。
 * 启动抛 `not in the energy cell tier registry`——套装引用的等级没注册。
@@ -95,7 +94,7 @@ StartupEvents.registry('block', event => {
 * 启动抛 `must reference the same tier instance`——方块与套装用了两个等价但不同的等级实例。
 * 启动抛 `registered as ... but reports id ...; the two must match`——等级的注册名与它自称的 id 不一致。
 * 启动抛 `is used by more than one tier`——两个等级的 id 重复。
-* 启动 ERROR `More than one scripted module block claims tier`——两个脚本方块写了同一个 `tierId`，只跳过后面那个。
+* 启动 ERROR `More than one tier claims the id`——两个来源写了同一个 id，只跳过后面那个。
 * 启动 ERROR `resolved to bit ..., beyond the ...-bit tier mask`——等级总数超过 32。
 
 ## 边界
@@ -104,4 +103,4 @@ StartupEvents.registry('block', event => {
 
 位号是存档协议，不要动内置三档那三个数。存档里的 `tierMask` 按固定位号记等级：内置三档写死 0/1/2，你自己的等级从 3 起按等级 id 排序分配，位号只依赖「装了哪几个等级」，与加载顺序无关。上限 32，掩码是 `int`。
 
-本模组不碰你方块的默认状态，创造模式标签页只收本模组命名空间的物品，你的方块进你的标签页。
+本模组不碰你方块的默认状态。第三方注册的模块方块会自动进本模组的「外部注册」标签页（命名空间不是本模组即收），你也可以同时把它放进自己的标签页。

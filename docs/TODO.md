@@ -87,7 +87,7 @@
 - ✅ **等级可注册**：`EnergyCellTier` 从枚举改为注册表元素（注册表键 `ae2modularcells:energy_cell_tier`），其他模组用自己的命名空间注册新等级；本模组三档的注册名、数值、声明顺序均不变
 - ✅ **位号固定**：存档里的 `tierMask` 位号改取固定位号（内置三档 0/1/2，其余按注册名排序从 3 起），不再用注册表的整数 id——那是「注册分配序」，第三方先注册就会让旧存档认错档（口径见 `docs/ARCHITECTURE.md` §2.1）
 - ✅ **方块套装 API**：`api/ModularCellsApi#registerEnergyCellModule` 一次注册方块 / 方块物品 / 方块实体类型并把类型回填给方块；本模组自己走同一入口，不留特权路径
-- ✅ **能力与模型跨模组遍历**：能力注册（FE 面 / 组件槽物品面 / 网格主机能力）与客户端模型替换改走 `allModuleBlockSets()`；创造页反向只收本模组命名空间（接入面全貌见 §5.1）
+- ✅ **能力与模型跨模组遍历**：能力注册（FE 面 / 组件槽物品面 / 网格主机能力）与客户端模型替换改走 `allModuleBlockSets()`；创造页分两页（主页收本模组、外部注册页收其余，后者无人注册时不注册）（接入面全貌见 §5.1）
 - ✅ **KubeJS 插件**：`integration/kubejs` + `resources/kubejs.plugins.txt`。脚本用 `StartupEvents.registry('block', e => e.create('x_energy_cell_module', 'ae2modularcells:module').capacity(...))` 一步建出等级 + 方块 + 方块物品 + 方块实体类型；入口选方块而非等级的原因（KubeJS 的落盘只认当前注册表，而 vanilla 注册表早于自建注册表）与实测过程见 `docs/ARCHITECTURE.md` §5.1
 - ⬜ **数据生成**：第三方现在要手抄 blockstates / models JSON 与两张贴图命名；将来可用 datagen 提供一个生成器
 

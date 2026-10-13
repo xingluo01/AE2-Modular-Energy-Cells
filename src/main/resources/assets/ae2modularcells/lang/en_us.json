@@ -3,6 +3,7 @@
   "block.ae2modularcells.dense_energy_cell_module": "Modular Dense Energy Unit",
   "block.ae2modularcells.superdense_energy_cell_module": "Modular Superdense Energy Unit",
   "itemGroup.ae2modularcells": "AE2 Modular Energy Units",
+  "itemGroup.ae2modularcells.extensions": "AE2 Modular Energy Units: External",
   "gui.ae2modularcells.energy_module_terminal.title": "Energy Module Terminal",
   "gui.ae2modularcells.module_label": "(%s, %s, %s)",
   "gui.ae2modularcells.tier_group_count": "Modules: %s",

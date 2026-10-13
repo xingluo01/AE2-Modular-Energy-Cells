@@ -22,6 +22,7 @@ import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.neoforged.neoforge.registries.RegisterEvent;
 
 import appeng.api.AECapabilities;
 import appeng.blockentity.AEBaseBlockEntity;
@@ -120,6 +121,33 @@ public final class AEModularCellsRegistries {
 
     public static final DeferredItem<BlockItem> BLANK_ENERGY_UNIT_ITEM =
             ITEMS.registerSimpleBlockItem("blank_energy_unit", BLANK_ENERGY_UNIT);
+
+    /**
+     * 外部注册的模块方块标签页。
+     *
+     * <p>第三方把方块放进自己的标签页是一种选择，但那条路下整合包常常「装了却搜不到」。这里多给一个收口：
+     * 凡是注册进本模组的模块套装、而命名空间不是本模组的，都自动进这一页。</p>
+     *
+     * <p>没有外部套装时整页不注册（见 {@link #register(IEventBus)}）——没有拿「空页客户端会自己隐藏」当
+     * 设计前提：那条本仓没有验证过，而只装本模组的人本来就不该多出一页空白。</p>
+     */
+    private static final CreativeModeTab EXTENSIONS_TAB = CreativeModeTab.builder()
+            .title(Component.translatable("itemGroup." + AE2ModularCells.MOD_ID + ".extensions"))
+            .icon(() -> new ItemStack(externalSets().stream().findFirst()
+                    .map(ModuleBlockSet::item).orElse(BLANK_ENERGY_UNIT_ITEM.get())))
+            .displayItems((parameters, output) -> {
+                for (var set : externalSets()) {
+                    output.accept(set.item());
+                }
+            })
+            .build();
+
+    /** 命名空间不是本模组的模块套装，也就是「外部注册」那一页该收的。 */
+    private static List<ModuleBlockSet> externalSets() {
+        return ModularCellsApi.allModuleBlockSets().stream()
+                .filter(set -> !AE2ModularCells.MOD_ID.equals(set.id().getNamespace()))
+                .toList();
+    }
 
     /** 空白单元的方块实体：只为了让 AE 的扳手认它，里面没有任何数据。 */
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BlankEnergyUnitBlockEntity>> BLANK_ENERGY_UNIT_BLOCK_ENTITY =
@@ -258,6 +286,14 @@ public final class AEModularCellsRegistries {
         BLOCK_ENTITIES.register(modBus);
         MENUS.register(modBus);
         CREATIVE_TABS.register(modBus);
+        // 外部注册那一页：真有人这么注册才注册这一页。挂在创造页注册表那一次——它在方块注册表之后，
+        // 此刻所有套装都已绑定，数得出有没有外部的（若早于方块注册表，allModuleBlockSets() 会是空表）。
+        modBus.addListener((RegisterEvent event) -> {
+            if (event.getRegistryKey().equals(Registries.CREATIVE_MODE_TAB) && !externalSets().isEmpty()) {
+                event.register(Registries.CREATIVE_MODE_TAB, AE2ModularCells.makeId("extensions"),
+                        () -> EXTENSIONS_TAB);
+            }
+        });
         // 能力按「方块实体类型」注册，NeoForge 不给「只给核心注册」留口子；所以三档全注册，
         // 由 provider 自己回答「这个面到底收不收」。
         modBus.addListener(AEModularCellsRegistries::registerCapabilities);
