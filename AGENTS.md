@@ -35,7 +35,7 @@ AE2（应用能源 2）的附属模组 `ae2modularcells`：模块化能源元件
 - **只向上游读，不向上游写**：不修改 AE2 原版代码与其能源元件行为；接入走公开 API（`IAEPowerStorage` 等）。
 - **能量面口径**：AE2 的能源元件**不走**平台 `IEnergyStorage`，走网格的 `IAEPowerStorage` + `IEnergyService`。写这条是防走错路，详见 `docs/ARCHITECTURE.md` §2.5。
 - **性能红线**：模块方块实体**不注册 ticker**（`BlockEntityType` 带了 ticker，NeoForge 每 tick 就会逐台调用 `tick()`，函数体里写 `return` 省不了那次调度）；真要周期工作就挂 AE2 的 `IGridTickable`。结构检测只在放置/破坏/组件变化时触发，绝不轮询；单次扫描上界 4096 方块；网络节点只暴露一个。
-- **数值集中**：容量、速率、槽位数与每块上限只在 `EnergyCellTier` / `StorageComponentTier` / `ModularCellConstants` 里；两条公式的五个系数（k / b / kv / bv / f_in）在 `ModularCellConstants` 里只作**默认值**，运行时取 `common/config/ModularCellConfig`。公式只在 `common/logic/CellMath` 实现一次，其他地方不写第二份字面量。
+- **数值集中**：容量、速率、槽位数与每块上限只在 `EnergyCellTier` / `StorageComponentTier` / `ModularCellConstants` 里。五个公式系数分两类：k / kv 乘的是组件自己带来的值，属于组件常量，只在 `ModularCellConstants` 定义、**不进配置**；b / bv / f_in 描述结构规模与输入口径，`ModularCellConstants` 里只作**默认值**，运行时取 `common/config/ModularCellConfig`。公式只在 `common/logic/CellMath` 实现一次，其他地方不写第二份字面量。
 - **集成红线**：`integration/<邻居>` 只写那个邻居的适配；**邻居的类型名不得漏进总是加载的类**——缺那个模组时会在加载阶段炸。门禁写在独立小类里。
 - **「名字即协议」**：`registerClientAction("...")` 的动作名与 `@GuiSync(n)` 的注解值靠客户端/服务端配对，不能改、也不能被第二个字段复用；方块实体 NBT key 同理。
 - **屏幕样式文档是唯一布局源**：代码按 id 取控件，文档没声明就会在开屏时抛异常踢玩家。改完跑：

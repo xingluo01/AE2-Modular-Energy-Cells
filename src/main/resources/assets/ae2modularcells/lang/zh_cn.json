@@ -28,12 +28,8 @@
 
   "ae2modularcells.config.cells.coefficients": "公式系数",
   "ae2modularcells.config.cells.coefficients.description": "两条公式里的系数。改这里会让整段结构的容量与速率跟着变。",
-  "ae2modularcells.config.cells.coefficients.componentDiscount": "存储组件容量折扣 k",
-  "ae2modularcells.config.cells.coefficients.componentDiscount.description": "每个存储组件贡献的容量。单模块容量 =（A + Σ S_i × k）×（1 + b × C）。",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus": "容量数量加成 b",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus.description": "插入 C 个组件时，单模块容量乘（1 + b × C）。",
-  "ae2modularcells.config.cells.coefficients.transferDiscount": "能量存储组件速率折扣 kv",
-  "ae2modularcells.config.cells.coefficients.transferDiscount.description": "每个能量存储组件贡献的速率。单模块速率 =（V + Σ Sv_i × kv）×（1 + bv × C）。",
   "ae2modularcells.config.cells.coefficients.transferCountBonus": "速率数量加成 bv",
   "ae2modularcells.config.cells.coefficients.transferCountBonus.description": "插入 C 个组件时，单模块速率乘（1 + bv × C）。",
   "ae2modularcells.config.cells.coefficients.inputRatio": "输入比例 f_in",

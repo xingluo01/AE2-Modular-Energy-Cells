@@ -71,7 +71,8 @@
 
 ### M8 工程补件 — ⬜ P3
 
-- ✅ 配置项（MezzConfig 托管，服务端归属、游戏内可编辑）：五个系数（k / b / kv / bv / f_in）可调；另有 `componentGains` 额外组件表，按 `<物品 id>=<容量值>:<速率值>` 声明任意物品的贡献，优先级高于内置识别。速率与输入上限（`EnergyCellTier` 的 `V_max` / `V_in_max`）**仍不可配**——它们跟着方块等级走
+- ✅ 配置项（MezzConfig 托管，服务端归属、游戏内可编辑）：可调的是**三个系数**（b / bv / f_in）；k 与 kv 乘的是组件自己带来的值，属组件常量，不进配置；另有 `componentGains` 额外组件表，按 `<物品 id>=<容量值>:<速率值>` 声明任意物品的贡献，优先级高于内置识别。速率与输入上限（`EnergyCellTier` 的 `V_max` / `V_in_max`）**仍不可配**——它们跟着方块等级走
+- 旧存档 `serverconfig/ae2modularcells/cells.ini` 里的 `componentDiscount` / `transferDiscount` 两行，在 k / kv 退出配置后已成孤儿键（不生效，也不致加载失败），可手动删。另注：`componentGains` 的优先级最高，对**内置组件**也能逐条覆盖甚至置 0——那是「额外声明」的副作用，不是一个开关
 - 配置界面的语言键约定（对齐 MezzConfig 自己的键形，别猜）：分类名 = `<langKey>.<分类>`；分类描述 = 同 key 再加 `.description`；值名 = `<langKey>.<分类>.<值>`；值描述 = 同 key 再加 `.description`。`valueValues` / `defaultValue` / 「需要重启」这类**通用标签由 MezzConfig 自带**，mod 侧不用写。**窗口标题是它自动生成的（`<ModId> Configuration`），没有对应键**——`IConfigSchemaBuilder` 上也没有声明名字的 API。缺键时看实机日志里 `ConfigTranslationChecker` 的清单，它会逐字列出要补的键
 - ⬜ `modaccessor` / 访问转换（仅当确需访问 AE2 非公开成员时接入，届时补 `mods_accessor.cfg`）
 - 🔄 开发环境已补 **Applied Generators（应用发电机）**（`maven.modrinth:y1qmWFWM:TW2EMLE6`，需 AE2 + Glodium + AppFlux）：FE 侧电源 + AppFlux 折算，用来堆 10^5 ~ 10^6 AE/t 的稳态负载。**尚未实机压测**——速率的触顶行为与 f_in 折半目前仍停在算术推演
@@ -103,9 +104,9 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 |---|---:|---|
 | 结构边长 | 3 – 16 | `ModularCellConstants.MIN_SIDE` / `MAX_SIDE` |
 | 方块数上界 | 4 096 | `ModularCellConstants.MAX_BLOCKS` |
-| 组件容量折扣 k（存储组件→容量） | 0.2（可配 0.001 ~ 0.5） | `ModularCellConstants.COMPONENT_DISCOUNT`（默认值）→ `ModularCellConfig` |
+| 组件容量折扣 k（存储组件→容量） | 0.2（**常量，不进配置**） | `ModularCellConstants.COMPONENT_DISCOUNT` |
 | 容量数量加成 b | 2.0 | `ModularCellConstants.CAPACITY_COUNT_BONUS` → 配置 |
-| 组件速率折扣 kv（能量存储组件→速率） | 0.0001 | `ModularCellConstants.TRANSFER_DISCOUNT` → 配置 |
+| 组件速率折扣 kv（能量存储组件→速率） | 0.0001（**常量，不进配置**） | `ModularCellConstants.TRANSFER_DISCOUNT` |
 | 速率数量加成 bv | 0.1 | `ModularCellConstants.TRANSFER_COUNT_BONUS` → 配置 |
 | 输入比例 f_in | 0.5 | `ModularCellConstants.INPUT_RATIO` → 配置 |
 | 组件档位（规则表的数值来源） | AE2 `1k ~ 256k` / MEGA Cells `cell_component_1m ~ 256m` / AppFlux `core_1k ~ 256m` / OMNI Cells 三组 1k ~ 256m | `StorageComponentTier` |
@@ -133,7 +134,7 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 2. **核心选取规则**：✅ 已定——结构内**坐标最小**的那一块（= 立方体最小角），见 `MultiblockScanner.Layout`。与「最小角」重合是有意的：找范围与找核心成了同一件事，缓存里只记一个位置。混等级不影响这条（核心的等级不参与账目，只当它是一块普通模块）。
 3. **拆结构的能量归属**：整段拆掉时池里的能量去哪？——建议：留在核心方块（其余方块本就只是一份容量贡献，没有自己的能量账户）。
 4. **单块是否也吃上限**：✅ 已定——单块也照公式吃自己那一档的上限（`V_max` / `V_in_max`），不开特例。公式下 N=1 时 `T_v = min(D_v, 该档 V_max)`；基础模块插 1 个 256m 组件时 `D_v = (1 000 + 268 435 456 × 0.0001) × 1.1 ≈ 30 628 AE/t`，会被这一档的 16 000 夹到 16 000。
-5. **组件折扣是否开成配置项**：✅ 已定——五个系数（k / b / kv / bv / f_in）都进了配置（MezzConfig 托管，游戏内可编辑），`ModularCellConstants` 里的常量降为默认值。
+5. **组件折扣是否开成配置项**：✅ 已定——**不开**。k 与 kv 乘的是存储组件自己带来的值，属组件常量（改它等于改「组件有多强」，而那是组件自己的事），只保留编译期常量；进配置的是描述结构规模与输入口径的三项（b / bv / f_in），`ModularCellConstants` 里的常量降为默认值。
 6. **组件槽是否热插拔**：结构成型期间取出组件，容量掉到当前能量之下怎么办（AE2 原版的处理是允许超额、能量慢慢耗掉）？实现时对齐 AE2 上游行为。
 7. **破坏任一方块后**：✅ 已定——破坏时先把整段清成独立元件（按被拆那块手里的范围），再从六个邻居各自重算（需求 3.2 的口径）。
 8. **速率触顶的接受度**：✅ 已解决——上限改为**逐块之和**后「越建越快」自然成立，单块自己的上限只在单块时生效。要调的是每档的 `V_max` / `V_in_max`（`EnergyCellTier`）。原描述：三档 V_max 是单模块基础速率的 16 倍，而最小结构 27 块——无组件时 3³ 就已顶格，扩建后组件对速率也基本只用于补回已被上限吃掉的部分。若希望「越建越快」，要么擑高 V_max，要么让 V_max 随边长缩放。

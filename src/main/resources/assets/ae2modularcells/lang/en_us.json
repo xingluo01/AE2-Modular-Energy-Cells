@@ -28,12 +28,8 @@
 
   "ae2modularcells.config.cells.coefficients": "Coefficients",
   "ae2modularcells.config.cells.coefficients.description": "The coefficients used by the two formulas. Changing them changes the capacity and rate of every multiblock.",
-  "ae2modularcells.config.cells.coefficients.componentDiscount": "Storage Component Capacity Factor (k)",
-  "ae2modularcells.config.cells.coefficients.componentDiscount.description": "Capacity each storage component adds. Per-module capacity is (A + sum S_i x k) x (1 + b x C).",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus": "Capacity Count Bonus (b)",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus.description": "With C components installed, per-module capacity is multiplied by (1 + b x C).",
-  "ae2modularcells.config.cells.coefficients.transferDiscount": "Energy Storage Component Rate Factor (kv)",
-  "ae2modularcells.config.cells.coefficients.transferDiscount.description": "Rate each energy storage component adds. Per-module rate is (V + sum Sv_i x kv) x (1 + bv x C).",
   "ae2modularcells.config.cells.coefficients.transferCountBonus": "Rate Count Bonus (bv)",
   "ae2modularcells.config.cells.coefficients.transferCountBonus.description": "With C components installed, per-module rate is multiplied by (1 + bv x C).",
   "ae2modularcells.config.cells.coefficients.inputRatio": "Input Ratio (f_in)",

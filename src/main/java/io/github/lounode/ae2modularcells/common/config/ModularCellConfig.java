@@ -25,10 +25,15 @@ import io.github.lounode.ae2modularcells.common.ModularCellConstants;
  * 两端用的是同一份数。这条对本模组是必要的——屏幕上的手势判据与槽位校验都跑在客户端，客户端拿到的必须
  * 是服务端那份；换成客户端归属就成了「各读各的文件」，两端会分叉。</p>
  *
- * <p><b>为什么这些数要能改</b>：{@link ModularCellConstants} 里那五个系数是平衡值——整合包想调堆叠收益、
- * 或者想让自己的组件比内置档位更强，改数字比等发版现实。同理，<b>不是每个邻居都实现了 AE2 的公开接口</b>，
- * 内置识别路径（接口 / 注册名规则表）都是写死在代码里的模组知识；{@code componentGains} 让玩家与整合包
- * 不动代码就能补上任意物品。</p>
+ * <p><b>为什么 k 与 kv 不在配置里</b>：它们乘的是「存储组件自己带来的值」（档位表的数值），属于组件常量的
+ * 一部分。组件值本身不开放调整，那么「一个组件折算多少」也不该单独可调——放进来只会让人以为可以靠调它把
+ * 组件变强，而组件强度是它自己的事。可调的是结构规模与输入口径那三项（b / bv / f_in）；k 与 kv 只读
+ * {@link ModularCellConstants} 里的常量。</p>
+ *
+ * <p><b>为什么这些数要能改</b>：{@link ModularCellConstants} 里可配的那三个系数是平衡值——整合包想调堆叠
+ * 收益、或调整输入口径，改数字比等发版现实。{@code componentGains} 解决的是另一件事：<b>不是每个邻居都
+ * 实现了 AE2 的公开接口</b>，内置识别路径（接口 / 注册名规则表）都是写死在代码里的模组知识，它让玩家与
+ * 整合包不动代码就能补上任意物品。</p>
  *
  * <p><b>「额外组件」为什么是自定义类型的列表，而不是字符串列表</b>：元素的类型是
  * {@link ComponentSpec}，它自带序列化器（{@link ComponentSpecSerializer}）。这样 MezzConfig 的界面
@@ -49,9 +54,7 @@ public final class ModularCellConfig {
     /** 配置 schema。建值顺序即界面上的顺序。 */
     public static final IConfigSchema SCHEMA;
 
-    private static final IConfigValue<Double> COMPONENT_DISCOUNT;
     private static final IConfigValue<Double> CAPACITY_COUNT_BONUS;
-    private static final IConfigValue<Double> TRANSFER_DISCOUNT;
     private static final IConfigValue<Double> TRANSFER_COUNT_BONUS;
     private static final IConfigValue<Double> INPUT_RATIO;
     private static final IConfigValue<List<ComponentSpec>> COMPONENT_GAINS;
@@ -64,15 +67,8 @@ public final class ModularCellConfig {
         var builder = registration.createServerSchemaBuilder("cells.ini", "ae2modularcells.config.cells");
 
         var coefficients = builder.addCategory("coefficients");
-        COMPONENT_DISCOUNT = coefficients
-                .addDouble("componentDiscount", ModularCellConstants.COMPONENT_DISCOUNT,
-                        ModularCellConstants.COMPONENT_DISCOUNT_MIN, ModularCellConstants.COMPONENT_DISCOUNT_MAX)
-                .build();
         CAPACITY_COUNT_BONUS = coefficients
                 .addDouble("capacityCountBonus", ModularCellConstants.CAPACITY_COUNT_BONUS, 0.0D, 100.0D)
-                .build();
-        TRANSFER_DISCOUNT = coefficients
-                .addDouble("transferDiscount", ModularCellConstants.TRANSFER_DISCOUNT, 0.0D, 1.0D)
                 .build();
         TRANSFER_COUNT_BONUS = coefficients
                 .addDouble("transferCountBonus", ModularCellConstants.TRANSFER_COUNT_BONUS, 0.0D, 100.0D)
@@ -106,9 +102,9 @@ public final class ModularCellConfig {
         // 动作全在静态初始化里，这里只提供入口。
     }
 
-    /** 存储组件容量折扣 k。 */
+    /** 存储组件容量折扣 k。组件自带的常量，不进配置——理由见类 javadoc。 */
     public static double componentDiscount() {
-        return COMPONENT_DISCOUNT.get();
+        return ModularCellConstants.COMPONENT_DISCOUNT;
     }
 
     /** 容量侧的数量加成 b。 */
@@ -116,9 +112,9 @@ public final class ModularCellConfig {
         return CAPACITY_COUNT_BONUS.get();
     }
 
-    /** 能量存储组件速率折扣 kv。 */
+    /** 能量存储组件速率折扣 kv。组件自带的常量，不进配置——理由见类 javadoc。 */
     public static double transferDiscount() {
-        return TRANSFER_DISCOUNT.get();
+        return ModularCellConstants.TRANSFER_DISCOUNT;
     }
 
     /** 速率侧的数量加成 bv。 */

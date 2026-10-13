@@ -4,9 +4,12 @@ package io.github.lounode.ae2modularcells.common;
  * 多方块的尺寸、上限与两条公式的系数。
  *
  * <p>尺寸与上界（{@link #MIN_SIDE} / {@link #MAX_SIDE} / {@link #MAX_BLOCKS}）是编译期常量：它们决定数组、
- * 位图与迭代上限，不进配置。而五个公式系数（{@link #COMPONENT_DISCOUNT} / {@link #CAPACITY_COUNT_BONUS}
- * / {@link #TRANSFER_DISCOUNT} / {@link #TRANSFER_COUNT_BONUS} / {@link #INPUT_RATIO}）在这里只是<b>默认值</b>
- * ——实际取值由配置提供，见 {@code common.config.ModularCellConfig}。</p>
+ * 位图与迭代上限，不进配置。</p>
+ *
+ * <p>五个公式系数分两类：{@link #COMPONENT_DISCOUNT}（k）与 {@link #TRANSFER_DISCOUNT}（kv）乘的是组件
+ * 自己带来的值，属于<b>组件常量</b>，只在这里定义、不进配置；{@link #CAPACITY_COUNT_BONUS}（b）/ 
+ * {@link #TRANSFER_COUNT_BONUS}（bv）/ {@link #INPUT_RATIO}（f_in）描述结构规模与输入口径，<b>可配</b>
+ * ——这里是它们的默认值，运行时取值见 {@code common.config.ModularCellConfig}。</p>
  *
  * <p>分头写死这些常数就会在某一处悄悄脱节——「16³ = 4096」不是可以随手重算的数，各处的数组、位图与
  * 迭代上限都要照它取。</p>
@@ -37,31 +40,32 @@ public final class ModularCellConstants {
      * （2 槽、8192 个组件、堆叠 2.20 TAE）落在 2.23 TAE（1.01 倍）。推导见指南的增益算法页。</p>
      *
      * <p>一个 256m 组件（268 435 456 AE）在 k = 0.2 下折算 53 687 091 AE，约等于 268 台基础模块。</p>
+     *
+     * <p><b>不进配置</b>：它乘的是组件自己的值，属于组件常量的一部分——组件值不可调，那么「一个组件折算多少」
+     * 也不该单独可调。</p>
      */
     public static final double COMPONENT_DISCOUNT = 0.2D;
 
-    /** 组件容量折扣 k 的配置下限。 */
-    public static final double COMPONENT_DISCOUNT_MIN = 0.001D;
-
-    /** 组件容量折扣 k 的配置上限。要盖得住 {@link #COMPONENT_DISCOUNT}，否则默认值会被夹回去。 */
-    public static final double COMPONENT_DISCOUNT_MAX = 0.5D;
-
-    /** 组件数量加成 b：装满 C 个组件时，容量乘 {@code (1 + b × C)}，故基础/致密/超密最多 ×3 / ×5 / ×7。 */
+    /** 组件数量加成 b：装满 C 个组件时，容量乘 {@code (1 + b × C)}，故基础/致密/超密最多 ×3 / ×5 / ×7。可配，这里是默认值。 */
     public static final double CAPACITY_COUNT_BONUS = 2.0D;
 
     // ---- 速率公式：D_v = (V + Σ Sv_i × kv) × (1 + bv × C) ----
 
-    /** 传输组件速率折扣 kv：每个组件往模块速率里贡献 {@code Sv_i × kv}（容量折扣的 1/50）。 */
+    /**
+     * 传输组件速率折扣 kv：每个组件往模块速率里贡献 {@code Sv_i × kv}（容量折扣的 1/50）。
+     *
+     * <p>与 k 同理，<b>不进配置</b>：它乘的是组件自己的值。</p>
+     */
     public static final double TRANSFER_DISCOUNT = 0.0001D;
 
-    /** 速率侧的组件数量加成 bv：装满 C 个组件时，速率乘 {@code (1 + bv × C)}。 */
+    /** 速率侧的组件数量加成 bv：装满 C 个组件时，速率乘 {@code (1 + bv × C)}。可配，这里是默认值。 */
     public static final double TRANSFER_COUNT_BONUS = 0.1D;
 
     /**
      * 输入比例系数 f_in：充能速率 = 总速率 × f_in，再被等级的 V_in_max 夹住。
      *
      * <p>取 0.5 而不是 1.0：放电（供应网络）保持全速，充能侧折半，避免一座超大结构在几秒内被灌满
-     * 而失去「容量」这件事的意义。要做成可配置项时这两个值就是候选项。</p>
+     * 而失去「容量」这件事的意义。这里是默认值，运行时取值见 {@code common.config.ModularCellConfig}。</p>
      *
      * <p>注意当前三档的 {@code V_in_max} 都恰好是 {@code V_max} 的一半，于是 f_in = 0.5 时两道约束重合；
      * 只有把 f_in 改成 1.0（或调低 V_in_max）时，总输入速率那道 min 才会独立生效。</p>
