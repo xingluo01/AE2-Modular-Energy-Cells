@@ -55,7 +55,7 @@ event.create('industrial_energy_cell_module', 'ae2modularcells:module')
 
 ---
 
-## 二、要自备的资源
+## 二、资源清单（示例已带全套）
 
 API 只管注册，资源全要自己给。方块 id 是 `kubejs:industrial_energy_cell_module`（脚本里不写命名空间时默认是 `kubejs`），所以下面都放在 `kubejs/assets/kubejs/` 与 `kubejs/data/kubejs/` 下。
 
@@ -67,9 +67,9 @@ API 只管注册，资源全要自己给。方块 id 是 `kubejs:industrial_ener
 | `data/kubejs/loot_table/blocks/industrial_energy_cell_module.json` | **挖下来什么都不掉，而且不报错** |
 | 语言键 `block.kubejs.industrial_energy_cell_module` | 显示原始键名 |
 
-完整可抄的一套在 [`examples/industrial/`](examples/industrial/)——那是把内置基础档那份逐字改过来的，除了贴图（二进制，得自己画或从本模组复制两张改名）。
+完整可抄的一套在 [`examples/industrial/`](examples/industrial/)——那是把内置基础档那份逐字改过来的，贴图也已带（从基础档复制改名）。
 
-**贴图只缺两张**：`ring_corner` / `ring_side_hor` / `ring_side_ver`、`energy_cell_light_base`、`unit` 这五张是连通边框与通用件的共享贴图，模型 JSON 里直接引用本模组的即可（`ae2modularcells:block/...`），不用自己造。
+**必须自己准备的只有两张贴图**（`textures/block/<等级名>_energy_cell.png` 与 `..._light.png`，见上表）——`examples/industrial/` 里已带副本。另有五张是连通边框与通用件的共享贴图：`ring_corner` / `ring_side_hor` / `ring_side_ver`、`energy_cell_light_base`、`unit`，模型 JSON 里直接引用本模组的即可（`ae2modularcells:block/...`），不用自己造。
 
 **那两张等级贴图必须与方块同命名空间。** 上表写 `kubejs:` 是因为示例方块在 `kubejs` 命名空间下；若你把方块写成 `mypack:xxx_energy_cell_module`，两张图就要放到 `mypack` 的 `textures/block/` 下——连通模型是按「方块所在的命名空间 + 等级名」去找的，放在别处会紫黑格，而且只会在资源重载日志里留一条「没进方块图集」的告警。
 
@@ -77,10 +77,14 @@ API 只管注册，资源全要自己给。方块 id 是 `kubejs:industrial_ener
 
 ## 三、装进整合包
 
-1. 把脚本放进 `kubejs/startup_scripts/`。
-2. 把 `assets/` 与 `data/` 两棵树按上面的路径铺进 `kubejs/`。
-3. 复制内置基础档的两张贴图到自己命名空间下、改名为 `<等级名>_energy_cell.png` 与 `<等级名>_energy_cell_light.png`（内置的在 `assets/ae2modularcells/textures/block/`）。
-4. 进游戏，方块应该出现在创造模式的搜索里（**你的方块进你的标签页**，本模组不代管）。
+要把这一套发给别人测，直接把 [`examples/industrial/kubejs/`](examples/industrial/kubejs/) 拷过去就行——它是铺平的整合包形态，且贴图已带。[前置模组与验收清单](examples/industrial/README.md)在案例说明里。
+
+要自己从零铺、或只装其中一部分，按下面来：
+
+1. **脚本**放 `kubejs/startup_scripts/` 下。
+2. **资源**：`assets/` 与 `data/` 两棵树放进 `kubejs/`（路径同上一节）。
+3. **贴图**：`examples/industrial/` 已带副本；自己另做档位时，从 `assets/ae2modularcells/textures/block/` 复制两张改名，放进**自己命名空间**的 `textures/block/` 下。
+4. 进游戏，方块应该出现在创造模式的搜索里（**你的方块进你的标签页**，本模组不代管；这一套不发配方，只能创造拿）。
 
 等级与方块套装都是**双端注册表**，所以脚本两边都要装。资源按边分：`assets/` 只客户端要（少了是紫黑格、裸键名），`data/` 里的掉落表走服务端（少了挖下来什么都不掉）。
 
@@ -110,4 +114,4 @@ API 只管注册，资源全要自己给。方块 id 是 `kubejs:industrial_ener
 
 - **位号是存档协议。** 存档里的 `tierMask` 按固定位号记等级：内置三档写死 0/1/2，你的等级从 3 起按注册名排序分配。位号只依赖「装了哪几个等级」，与加载顺序无关。
 - **等级总数上限 32**（掩码是 `int`）。超了启动期记一条 ERROR，真正出问题是在运行期算到那一档时。
-- **示例**：[`examples/`](examples/) 下两个——`industrial/` 是带全套资源的完整例子，`minimal/` 是最小可用写法。
+- **示例**：[`examples/`](examples/) 下两个——`industrial/` 是带全套资源的完整例子（可直接当测试包分发）；`minimal/` 只是**脚本写法演示**，不含任何资源，单独装只会得到一个没模型、不掉落的方块。
