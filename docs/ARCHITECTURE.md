@@ -241,6 +241,8 @@ public static final ModuleBlockSet MY_SET = ModularCellsApi.registerEnergyCellMo
 
 - 贴图两张，按等级 id 命名：`<tierId>_energy_cell`（面板）与 `<tierId>_energy_cell_light`（亮面）。连通模型按等级 id 找它们，名字不匹配的表现是紫黑格。
 - 方块状态与物品模型 JSON：本模组不做数据生成，三档那几份可以照抄（形状变体 `fill=0..4`）。
+- **方块掉落表**：`data/<你的命名空间>/loot_table/blocks/<方块名>.json`。没有它，方块挖下来**什么都不掉**，
+  而且没有任何报错——内置三档有这份文件可以照抄。
 - 语言键 `block.<命名空间>.<方块名>`。
 
 **脚本侧（KubeJS）**
@@ -255,14 +257,18 @@ StartupEvents.registry('block', event => {
 })
 ```
 
-等级名默认取方块名去掉 `_energy_cell_module` 后缀（可用 `tierId('...')` 覆盖）。
+等级名默认取方块名去掉 `_energy_cell_module` 后缀（可用 `tierId('...')` 覆盖；方块名不含该后缀时整个方块名当等级名）。
 
 **入口为什么是方块而不是等级**：KubeJS 的落盘只认「当前正在注册的那个注册表」——它的
 `RegistryEventHandler#handleRegistryEvent` 取出该注册表的存储后逐个 `event.register`。而 `minecraft:block` 这类
-vanilla 注册表早于本模组的自建注册表，所以在等级 builder 里顺带 `add(Registries.BLOCK, ...)` 会被**静默丢弃**
+vanilla 注册表早于本模组的自建注册表（**实测成立，不是契约**；若这个前提被上游改掉，表现是启动期报错、
+不是静默半坏），所以在等级 builder 里顺带 `add(Registries.BLOCK, ...)` 会被**静默丢弃**
 （实测过：等级建出来了、方块没有）。反过来，方块最早、物品与方块实体类型都比它晚，所以以方块为入口能落盘；
 等级更晚，于是由方块 builder 产出实例、交给本模组在等级注册表那一次 `RegisterEvent` 补注册
-（`ModularCellsApi#registerScriptTiers`），脚本侧不必关心时序。
+（`ModularCellsApi#registerLateTiers`），脚本侧不必关心时序。
+
+（首版曾以 `StartupEvents.registry('ae2modularcells:energy_cell_tier', ...)` 为入口，因上面的时序问题在实测中作废
+——若见到那种写法，它不会生效。）
 
 脚本建的套装经 `ModularCellsApi#registerModuleBlockSet` 与 Java 注册的汇进同一张清单，之后的处理完全一样。
 

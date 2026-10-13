@@ -37,13 +37,13 @@ public record DeferredModuleBlockSet(
         DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyCellModuleBlockEntity>> blockEntity) {
 
     /**
-     * 句柄是否都已绑定。
+     * 三件是否都已绑定。
      *
-     * <p>三者同批注册、同批绑定，所以只看方块那一个；未绑定意味着注册表还没轮到本模组，这时候
-     * {@code get()} 会抛。</p>
+     * <p>三者落在三张不同注册表（方块 / 物品 / 方块实体类型），分三次绑定，所以必须逐个看：只看方块的话，
+     * 「方块已绑定而物品未绑定」那个窗口里 {@link #resolve()} 里的 {@code item.get()} 会抛。</p>
      */
     public boolean isBound() {
-        return block.isBound();
+        return block.isBound() && item.isBound() && blockEntity.isBound();
     }
 
     /** 解析成实例制。只在 {@link #isBound()} 为真时调用。 */

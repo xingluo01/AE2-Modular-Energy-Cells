@@ -112,7 +112,7 @@ public class ModuleBlockBuilder extends BuilderBase<EnergyCellModuleBlock> {
         if (tier == null) {
             tier = new EnergyCellTier(tierId(), baseCapacity, baseTransferRate, componentSlots,
                     maxTransferRate, maxInputRate);
-            ModularCellsApi.registerScriptTier(
+            ModularCellsApi.registerLateTier(
                     ResourceLocation.fromNamespaceAndPath(id.getNamespace(), tierId()), tier);
         }
         return tier;

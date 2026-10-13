@@ -9,6 +9,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -201,17 +202,23 @@ public final class ModularCellsApi {
                 return merged;
             }
             List<ModuleBlockSet> out = new ArrayList<>(DIRECT_SETS);
+            boolean everythingBound = true;
             synchronized (DEFERRED_SETS) {
                 for (var pending : DEFERRED_SETS) {
-                    // 句柄还没绑定就跳过：那意味着注册表还没轮到本模组，这时 get() 会抛。
-                    // 首次真正需要完整清单的是能力注册，那时早就绑好了。
                     if (pending.isBound()) {
                         out.add(pending.resolve());
+                    } else {
+                        everythingBound = false;
                     }
                 }
             }
-            merged = List.copyOf(out);
-            return merged;
+            // 只有全部解析出来才缓存。否则这张「不含 Java 侧套装」的残缺清单会被钉死，而之后再没有登记
+            // 动作来把它置空——那样 Java 侧（含本模组三档）的能力与模型会永久静默缺失。
+            // 首次真正需要完整清单的是能力注册，那时早已全部绑定；在那之前的读取只会拿到一份临时副本。
+            if (everythingBound) {
+                merged = List.copyOf(out);
+            }
+            return List.copyOf(out);
         }
     }
 
@@ -228,6 +235,21 @@ public final class ModularCellsApi {
         Set<EnergyCellTier> tiersWithBlockSets = new HashSet<>();
         for (var set : allModuleBlockSets()) {
             EnergyCellTier tier = set.tier();
+            // 三件真的都进了注册表吗。脚本那条路要靠注册表顺序（方块最早，物品与方块实体类型都比它晚），
+            // 而丢件的表现是安静的：方块没有物品、或方块实体类型压根不存在，启动日志里什么都看不到。
+            // 这里一次问清，把静默丢件变成启动期报错。
+            if (!BuiltInRegistries.BLOCK.containsKey(set.id())) {
+                throw new IllegalStateException("Module block set " + set.id()
+                        + " has no registered block; the registration path did not reach the block registry");
+            }
+            if (!BuiltInRegistries.ITEM.containsKey(set.id())) {
+                throw new IllegalStateException("Module block set " + set.id()
+                        + " has no registered item; it would be placed but never dropped");
+            }
+            if (!BuiltInRegistries.BLOCK_ENTITY_TYPE.containsKey(set.id())) {
+                throw new IllegalStateException("Module block set " + set.id()
+                        + " has no registered block entity type; the block would have no logic at all");
+            }
             if (ModularCellTiers.registryNameOf(tier) == null) {
                 throw new IllegalStateException("Module block set for tier " + tier.id()
                         + " was registered, but that tier is not in the energy cell tier registry;"
@@ -304,31 +326,45 @@ public final class ModularCellsApi {
             Collections.synchronizedList(new ArrayList<>());
 
     /**
-     * 登记一个由脚本产出的等级；真正注册发生在 {@link #registerScriptTiers(RegisterEvent)}。
+     * 登记一个晚到的等级（目前只有脚本会造出这种），真正注册发生在
+     * {@link #registerLateTiers(RegisterEvent)}。
+     *
+     * <p>名字不叫 Script 是有意的：本方法完全不依赖 KubeJS，也不知道调用者是谁——它接的就是「一个已经建好、
+     * 但还没进注册表的等级」。谁需要这条路都可以用。</p>
      *
      * <p>等级实例必须与它的方块套装共用同一个——启动期会按恒等比对「套装声明的等级」与「方块自报的等级」。</p>
      */
-    public static void registerScriptTier(ResourceLocation id, EnergyCellTier tier) {
+    public static void registerLateTier(ResourceLocation id, EnergyCellTier tier) {
         if (registrationClosed) {
-            throw new IllegalStateException("A scripted energy cell tier (" + id
-                    + ") was created after the server started; scripted tiers have to be created during startup");
+            throw new IllegalStateException("A late energy cell tier (" + id
+                    + ") was registered after the server started; it has to be created during the registry phase");
         }
         PENDING_TIERS.add(new PendingTier(id, tier));
     }
 
     /**
-     * 等级注册表那一次 {@code RegisterEvent}：把脚本建的等级补进去。
+     * 等级注册表那一次 {@code RegisterEvent}：把晚到的等级补进去。
      *
-     * <p>由模组入口挂到模组总线（{@code modBus.addListener(ModularCellsApi::registerScriptTiers)}）。</p>
+     * <p>由模组入口挂到模组总线（{@code modBus.addListener(ModularCellsApi::registerLateTiers)}）。</p>
      */
-    public static void registerScriptTiers(RegisterEvent event) {
+    public static void registerLateTiers(RegisterEvent event) {
         if (!event.getRegistryKey().equals(ModularCellTiers.TIER_REGISTRY_KEY)) {
             return;
         }
+        Set<ResourceLocation> seen = new HashSet<>();
         synchronized (PENDING_TIERS) {
             for (var pending : PENDING_TIERS) {
+                // 同一批里重名就直接跳过：NeoForge 的重复键异常不会提到是本模组的哪条链
+                // （两个方块写了同一个 tierId 就是这个症状），所以在这里先拦下来并说清楚。
+                // 与内置三档或第三方撞名的那种跨源重复仍交给 NeoForge，它的异常足够清楚。
+                if (!seen.add(pending.id())) {
+                    LOGGER.error("More than one scripted module block claims tier {}; skipping it."
+                            + " Give them different tierId() values.", pending.id());
+                    continue;
+                }
                 event.register(ModularCellTiers.TIER_REGISTRY_KEY, pending.id(), pending::tier);
             }
+            PENDING_TIERS.clear();
         }
     }
 
