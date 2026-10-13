@@ -139,12 +139,13 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     private IEnergyStorage feInput;
 
     /**
-     * 本 tick 已经收进来多少 AE（<b>入力额度</b>用），配 {@link #inputSpentTick} 判断是否过期。
-     *
-     * <p>它是「严格本 tick」的计数：限流看的是这个数，所以不能被显示用的峰值/衰减影响。</p>
+     * 令牌桶里的可用令牌（AE）：额度不是「严格本 tick」，而是一小段窗口的累积，见
+     * {@link #remainingInputBudget()}。配 {@link #inputTokenTick} 按游戏时间现算，不需要 ticker。
      */
-    private long inputSpentThisTick;
-    private long inputSpentTick = Long.MIN_VALUE;
+    private double inputTokens;
+
+    /** 上次补令牌的游戏刻。 */
+    private long inputTokenTick = Long.MIN_VALUE;
 
     /** 显示用的峰值：窗口内每 tick 收得最多的一次；配 {@link #lastInputTick} 做线性衰减。 */
     private long inputRatePeak;
@@ -169,7 +170,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     private static final double INPUT_RATE_SMOOTHING = 0.25D;
 
     /** 窗口起点（游戏刻）。每结算一次就挪到当前刻。 */
-    private long inputWindowStartTick;
+    private long inputWindowStartTick = Long.MIN_VALUE;
 
     /**
      * 显示窗口与额度重置的时长（tick）。
@@ -180,6 +181,17 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * 硬保持到点再归零会让数字一跳一跳，衰减看上去更像仪表。</p>
      */
     private static final int INPUT_RATE_TTL_TICKS = 10;
+
+    /**
+     * 令牌桶容量（tick 数）：一次脉冲最多能收下这么多 tick 的量。
+     *
+     * <p>为什么要给缓冲：额度原先是「严格本 tick」（{@code T_in} 减去本 tick 已收），而外部 FE 源的推送节奏
+     * 不由我们控制——电缆与发电机常常每隔几 tick 才推一次。那种源每次只能收满 {@code T_in}，超出的部分退回
+     * 且不累积，20 tick 均值就变成 {@code T_in ÷ 推送间隔}：每 4 tick 推一次是 1/4，每 6 tick 推一次是 1/6，
+     * 界面上的输入速率条永远爬不上去，加大单次推送量也没用。给了 1 秒的桶之后，脉冲源的平均输入速率与
+     * 连续源一致。
+     */
+    private static final int INPUT_BURST_TICKS = 20;
 
     /** 最近一次真实（非模拟）插入记下的时间：上面那个「本 tick」是按游戏时间懒重置的，不需要 ticker。 */
     private long lastInputTick = Long.MIN_VALUE;
@@ -260,9 +272,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * <p>这是「任何模块的面都能输入 FE」的落点——每个模块都暴露能力，但收到的能量都写成同一个池子。
      * 核心不在场时退回写自己那份，不至于把送进来的能量直接丢掉。</p>
      *
-     * <p><b>入力额度</b>：整段每 tick 能收的量就是 {@code T_in = min(T_v × f_in, Σ V_in_max_j)}。以前这里不设限，
-     * 只要池子没满就照收——于是 FE（以及任何走这条路的外部注入）能直接越过那个上限，界面上却还报一个被夹死的值。
-     * 现在超出额度的部分原样退回，上限对这条路是真的。</p>
+     * <p><b>入力额度</b>：整段输入速率的上限是 {@code T_in = min(T_v × f_in, Σ V_in_max_j)}，按一小段窗口结算
+     * （令牌桶，见 {@link #remainingInputBudget()}）——长期平均等于 {@code T_in}，同时允许外部源隔几 tick 推一次。
+     * 超出额度的部分原样退回。</p>
      *
      * <p><b>这条路盖住了谁</b>：外部电源（FE，经 AE2 的 {@code injectExternalPower}）与外力均落在这里。
      * 但 <b>AE 网格的注入不经过本方法</b>——AE2 的 {@code EnergyService} 直接调 {@code injectAEPower}，
@@ -286,17 +298,34 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /**
-     * 本 tick 还能收多少 AE：{@code T_in} 减去本 tick 已收。
+     * 还能收多少 AE：令牌桶的当前余量。
      *
-     * <p>没有 ticker：额度按「游戏时间对一下是不是同一 tick」现算——{@link #recordInput} 写的就是本 tick
-     * 已收量，两边共用同一个计数，所以界面上的「输入速率」永远不会超过 {@code T_in}。</p>
+     * <p>每经过一 tick 补 {@code T_in} 枚令牌，桶容量 {@code T_in × BURST_TICKS}，收能量时扣掉。长期平均仍是
+     * {@code T_in}（多 tick 平均的输入上限没变），但脉冲式的源能在桶里攒够一次收下，不再被推送节奏惩罚。
+     *
+     * <p>没有 ticker：补令牌按游戏时间现算；同一 tick 内被调用多次（SIMULATE 探一次、MODULATE 收一次）
+     * 结果一致。
      */
     private double remainingInputBudget() {
         long limit = stats().totalInputRate();
-        if (this.level == null || this.inputSpentTick != this.level.getGameTime()) {
-            return Math.max(0L, limit);
+        if (limit <= 0L) {
+            return 0.0D;
         }
-        return Math.max(0L, limit - this.inputSpentThisTick);
+        if (this.level == null) {
+            return limit;
+        }
+        long now = this.level.getGameTime();
+        double capacity = (double) limit * INPUT_BURST_TICKS;
+        if (this.inputTokenTick == Long.MIN_VALUE) {
+            // 首帧：桶直接装满，免得刚放下的结构还要等一秒才吃得上第一口。
+            this.inputTokens = capacity;
+            this.inputTokenTick = now;
+        } else if (now != this.inputTokenTick) {
+            long elapsed = Math.min(Math.max(0L, now - this.inputTokenTick), INPUT_BURST_TICKS);
+            this.inputTokens = Math.min(capacity, this.inputTokens + (double) limit * elapsed);
+            this.inputTokenTick = now;
+        }
+        return Math.max(0.0D, Math.min(this.inputTokens, capacity));
     }
 
     /**
@@ -313,19 +342,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         if (mode == Actionable.SIMULATE) {
             return;
         }
-        long amount = ae > 0.0 ? Math.round(ae) : 0L;
-        if (amount <= 0L || this.level == null) {
+        if (ae <= 0.0 || this.level == null) {
             return;
         }
+        long amount = Math.round(ae);
         long now = this.level.getGameTime();
         this.inputWindowSum += amount;
-        // 额度计数：严格按 tick 累加。
-        if (now == this.inputSpentTick) {
-            this.inputSpentThisTick += amount;
-        } else {
-            this.inputSpentTick = now;
-            this.inputSpentThisTick = amount;
-        }
+        // 扣令牌用原值，不用上面那个取整过的量：2 FE = 1 AE 时零头常是 0.5，按 1 扣会长期少收。
+        this.inputTokens = Math.max(0.0D, this.inputTokens - ae);
         // 显示峰值：上一次输入在半秒之前就开新窗口，否则取窗口内最大值。
         if (this.lastInputTick == Long.MIN_VALUE || now - this.lastInputTick >= INPUT_RATE_TTL_TICKS) {
             this.inputRatePeak = amount;
@@ -811,7 +835,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * 界面上就是闪烁。EMA 的表现才是参考源那种「持续供能时几秒内收敛到一个稳定值，停供后平缓落到 0」。</p>
      */
     private void settleInputWindow(long now) {
-        long span = Math.max(1L, now - this.inputWindowStartTick);
+        // 首帧窗口起点还是哨兵值（没结算过），按一个结算周期算——否则会拿「开局到现在的总刻度」
+        // 当分母，读数从 0 慢慢爬，而且每次重载都重演一遍。
+        long span = this.inputWindowStartTick == Long.MIN_VALUE
+                ? Math.max(1L, FILL_CHECK_INTERVAL)
+                : Math.max(1L, now - this.inputWindowStartTick);
         long raw = Math.round((double) this.inputWindowSum / span);
         this.smoothedInputRate = this.smoothedInputRate < 0L
                 ? raw
