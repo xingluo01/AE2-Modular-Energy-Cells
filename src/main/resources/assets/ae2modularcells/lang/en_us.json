@@ -25,7 +25,6 @@
   "block.ae2modularcells.blank_energy_unit": "Blank Modular Energy Unit",
   "block.ae2modularcells.energy_monitor": "Energy Storage Monitor",
   "block.ae2modularcells.flow_monitor": "Energy Flow Monitor",
-
   "ae2modularcells.config.cells.coefficients": "Coefficients",
   "ae2modularcells.config.cells.coefficients.description": "The coefficients used by the two formulas. Changing them changes the capacity and rate of every multiblock.",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus": "Capacity Count Bonus (b)",
@@ -37,15 +36,13 @@
   "ae2modularcells.config.cells.components": "Storage Components",
   "ae2modularcells.config.cells.components.description": "Every storage component this mod recognises, and what each one contributes. This table is the only source: startup writes the built-in list in here, after that the file is what counts.",
   "ae2modularcells.config.cells.components.componentGains": "Storage Components",
-  "ae2modularcells.config.cells.components.componentGains.description": "One component per line. Change a value to override what it contributes, write 0:0 to disable it, add a line to declare an item outside the built-in list. Deleting a line only lasts until the next start: the built-in list is written back in, so use 0:0 to keep something disabled.",
-  "ae2modularcells.config.cells.components.componentGains.syntax": "<item id>=<capacity>:<rate>[:<capacity modifier>[:<rate modifier>]]",
-  "ae2modularcells.config.cells.components.componentGains.syntax.id": "Item id, namespace included (somemod:item)",
-  "ae2modularcells.config.cells.components.componentGains.syntax.values": "<capacity>:<rate>[:<capacity modifier>[:<rate modifier>]]; trailing parts may be omitted, modifier 1.0 means no change",
+  "ae2modularcells.config.cells.components.componentGains.description": "One component per line: <item id>=<capacity>:<rate>:<capacity modifier>:<rate modifier>. Change a value to override what it contributes, write 0:0 to disable it, add a line to declare an item outside the built-in list. The last two are written out on save even when unchanged (1.0 = no change), so all four parameters stay visible. Deleting a line only lasts until the next start: the built-in list is written back in.",
+  "ae2modularcells.config.cells.components.componentGains.syntax": "<item id>=<capacity>:<rate>:<capacity modifier>:<rate modifier>",
   "ae2modularcells.config.cells.components.componentGains.error.badMultiplier": "\"%s\" is not a valid modifier",
   "ae2modularcells.config.cells.components.componentGains.error.empty": "Empty entry. Delete this line or fill in an item id.",
   "ae2modularcells.config.cells.components.componentGains.error.badId": "Cannot parse the item id (expected somemod:item - the namespace is required)",
-  "ae2modularcells.config.cells.components.componentGains.error.tooManyValues": "At most two values (capacity first, then rate)",
+  "ae2modularcells.config.cells.components.componentGains.error.tooManyValues": "Too many values: at most four (capacity, rate, capacity modifier, rate modifier)",
   "ae2modularcells.config.cells.components.componentGains.error.badValue": "\"%s\" is not a valid number",
   "ae2modularcells.config.cells.components.componentGains.warn.unknownItem": "Item %s is not in the registry. Check the spelling, or is that mod installed?",
-  "ae2modularcells.config.cells.components.componentGains.warn.disablesItem": "%s has both capacity and rate at 0: it contributes nothing, and it shadows built-in detection"
+  "ae2modularcells.config.cells.components.componentGains.error.negativeValue": "\"%s\" is negative; it will be treated as 0"
 }

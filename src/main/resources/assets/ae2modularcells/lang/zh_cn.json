@@ -25,7 +25,6 @@
   "block.ae2modularcells.blank_energy_unit": "模块化空白能量单元",
   "block.ae2modularcells.energy_monitor": "储能监控器",
   "block.ae2modularcells.flow_monitor": "能量流量监控器",
-
   "ae2modularcells.config.cells.coefficients": "公式系数",
   "ae2modularcells.config.cells.coefficients.description": "两条公式里的系数。改这里会让整段结构的容量与速率跟着变。",
   "ae2modularcells.config.cells.coefficients.capacityCountBonus": "容量数量加成 b",
@@ -37,15 +36,13 @@
   "ae2modularcells.config.cells.components": "存储组件配置",
   "ae2modularcells.config.cells.components.description": "本模组识别的全部存储组件，以及各自贡献多少。**这张表就是唯一来源**：启动时会把内置清单写进来，之后以文件内容为准。",
   "ae2modularcells.config.cells.components.componentGains": "存储组件清单",
-  "ae2modularcells.config.cells.components.componentGains.description": "每行一个组件：改值可覆盖它的贡献，调低就变弱，写成 0:0 就禁用，新增行可以声明内置清单以外的物品。删掉的行只到下次启动为止——内置清单会被写回来，要长期禁用请写 0:0。",
-  "ae2modularcells.config.cells.components.componentGains.syntax": "<物品 id>=<容量值>:<速率值>[:<容量倍率>[:<速率倍率>]]",
-  "ae2modularcells.config.cells.components.componentGains.syntax.id": "物品 id，要带命名空间（如 somemod:item）",
-  "ae2modularcells.config.cells.components.componentGains.syntax.values": "<容量值>:<速率值>[:<容量倍率>[:<速率倍率>]]；尾部可以省略，倍率 1.0 表示不修正",
+  "ae2modularcells.config.cells.components.componentGains.description": "每行一个组件：<物品 id>=<容量值>:<速率值>:<容量倍率>:<速率倍率>。改值可覆盖它的贡献，写成 0:0 就禁用，新增行可以声明内置清单以外的物品。保存时后两段会一并写出（1.0 表示不修正），四个参数都看得见。删掉的行只到下次启动为止——内置清单会被写回来。",
+  "ae2modularcells.config.cells.components.componentGains.syntax": "<物品 id>=<容量值>:<速率值>:<容量倍率>:<速率倍率>",
   "ae2modularcells.config.cells.components.componentGains.error.badMultiplier": "「%s」不是有效的倍率",
   "ae2modularcells.config.cells.components.componentGains.error.empty": "条目是空的。删掉这一行，或者填上个物品 id。",
   "ae2modularcells.config.cells.components.componentGains.error.badId": "物品 id 解析不出来（应形如 somemod:item，命名空间不能省）",
-  "ae2modularcells.config.cells.components.componentGains.error.tooManyValues": "贡献值最多两个（先容量后速率）",
+  "ae2modularcells.config.cells.components.componentGains.error.tooManyValues": "值太多了：最多四段（容量值、速率值、容量倍率、速率倍率）",
   "ae2modularcells.config.cells.components.componentGains.error.badValue": "「%s」不是有效的数字",
   "ae2modularcells.config.cells.components.componentGains.warn.unknownItem": "物品 %s 不在注册表里。拼写对吗？这个模组装了吗？",
-  "ae2modularcells.config.cells.components.componentGains.warn.disablesItem": "%s 的容量与速率都是 0：它不贡献任何东西，还会把内置识别遮蔽掉"
+  "ae2modularcells.config.cells.components.componentGains.error.negativeValue": "「%s」是负数，将按 0 处理"
 }

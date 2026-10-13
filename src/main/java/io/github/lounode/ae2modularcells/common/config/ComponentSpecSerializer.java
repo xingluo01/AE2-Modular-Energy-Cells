@@ -1,35 +1,43 @@
 package io.github.lounode.ae2modularcells.common.config;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
-import net.mezzdev.config.api.value.serializer.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 
 import io.github.lounode.ae2modularcells.common.ComponentSpec;
 
 /**
- * {@code componentGains} 的序列化器：一条 = 物品 id（键）+ 值与倍率（值）。
+ * 「存储组件清单」条目的序列化器：一行文本 ↔ 一个 {@link ComponentSpec}。
  *
- * <p>实现的是 {@link IConfigKeyValueSerializer} 而不是普通的单值序列化器——这样配置界面会把一条渲染成
- * <b>两列</b>（左 id、右参数），而不是把整条挤成一行长文本后截断。对应的语义正是「键是那个组件、值是它的衍生
- * 数据」。</p>
+ * <p><b>为什么是普通单值序列化器，而不是 {@code IConfigKeyValueSerializer}</b>：那种接口会把一条渲染成
+ * 「键格 + 值格」两列，每格只占行宽的<b>一半</b>（MezzConfig 的列表布局把行宽写死二分）。一条组件的文本形有
+ * 四个参数，半行放不下会被截断成 {@code ae2omnicells:omni_cell_component...}，看不出是哪一档。用单值序列化器
+ * 则整条占满一行，四个参数都能显示。</p>
  *
- * <p><b>文本形</b>：{@code <物品 id>=<容量值>:<速率值>[:<容量倍率>[:<速率倍率>]]}，从尾部可以省略。倍率是
- * {@code 1.0} 时一律省掉，所以不带修正的条目写出来与加倍率之前<b>逐字一致</b>，旧配置文件原样可读。</p>
- *
- * <p><b>校验与诊断</b>：字符串解析与「物品是否存在」的检查都走这里，界面会直接用同一条路径，于是写错的条目
- * 在界面上就会被标出来并给出原因，而不是等运行期静默失效。注册表未就绪时跳过存在性检查（见
- * {@link #markRegistryReady()}）。</p>
+ * <p><b>文本形</b>：{@code <物品 id>=<容量值>:<速率值>:<容量倍率>:<速率倍率>}。后两段可以省略（省略即
+ * {@code 1.0}），但<b>写回时一律补齐四段</b>——这样界面上四个参数都看得见，改倍率不必先去数冒号。整数倍率写成
+ * 整数（{@code 1} 而不是 {@code 1.0}）：省 4 个字符，正是大 GUI 缩放下「放得下 / 被截断」的那点余量，而且往返
+ * 仍然严格（{@code parseDouble("1") == 1.0}，再写出还是 {@code "1"}）。旧配置里的 {@code mod:item=1024:0}
+ * 原样可读，只是在下次保存时被规范化成四段（数值不变）。</p>
  */
-final class ComponentSpecSerializer implements IConfigKeyValueSerializer<ComponentSpec, ResourceLocation, ComponentValues> {
+final class ComponentSpecSerializer implements IConfigValueSerializer<ComponentSpec> {
 
     static final ComponentSpecSerializer INSTANCE = new ComponentSpecSerializer();
 
     /** 语言键前缀：schema 的 langKey + 分类 id + 项名。 */
     private static final String KEY = "ae2modularcells.config.cells.components.componentGains";
+
+    /** 倍率不修正时的取值。 */
+    private static final double NO_MODIFIER = 1.0D;
+
+    /** 整数值转 long 时的上界——超过它就别转，免得溢出成无意义的值。 */
+    private static final double INTEGER_FORMAT_LIMIT = 1.0E15D;
 
     /**
      * 注册表是否已经填好。
@@ -48,46 +56,16 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
     private ComponentSpecSerializer() {
     }
 
-    // ---- 键：物品 id ----
-
-    @Override
-    public IConfigValueSerializer<ResourceLocation> getKeySerializer() {
-        return KeySerializer.INSTANCE;
-    }
-
-    @Override
-    public ResourceLocation getKey(ComponentSpec spec) {
-        return spec.id();
-    }
-
-    @Override
-    public ComponentSpec createEntry(ResourceLocation id, ComponentValues values) {
-        return new ComponentSpec(id, values.capacity(), values.transfer(),
-                values.capacityMultiplier(), values.transferMultiplier());
-    }
-
-    // ---- 值：两个维度 + 两个倍率 ----
-
-    @Override
-    public IConfigValueSerializer<ComponentValues> getValueSerializer() {
-        return ValueSerializer.INSTANCE;
-    }
-
-    @Override
-    public ComponentValues getValue(ComponentSpec spec) {
-        return new ComponentValues(spec.capacity(), spec.transfer(),
-                spec.capacityMultiplier(), spec.transferMultiplier());
-    }
-
-    // ---- 整条 ----
-
     @Override
     public String serialize(ComponentSpec spec) {
         // 界面「新增一行」时可能拿到空元素，序列化这一侧不能炸。
         if (spec == null) {
             return "";
         }
-        return spec.id() + "=" + getValue(spec);
+        // 四段一律写全：这是「四个参数在界面上都看得见」的那一半，另一半是整条占满一行。
+        return spec.id() + "=" + spec.capacity() + ":" + spec.transfer()
+                + ":" + formatMultiplier(spec.capacityMultiplier())
+                + ":" + formatMultiplier(spec.transferMultiplier());
     }
 
     @Override
@@ -101,17 +79,30 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         String idText = equals < 0 ? trimmed : trimmed.substring(0, equals).trim();
         String valuesText = equals < 0 ? "" : trimmed.substring(equals + 1).trim();
 
-        var key = KeySerializer.INSTANCE.deserialize(idText);
-        var id = key.getResult().orElse(null);
-        if (id == null) {
-            return IDeserializeResult.failure(key.getDiagnostics());
+        if (idText.isEmpty()) {
+            return IDeserializeResult.failure(localize(KEY + ".error.empty"));
         }
-        var values = ValueSerializer.INSTANCE.deserialize(valuesText);
-        var parsedValues = values.getResult().orElse(new ComponentValues(0L, 0L,
-                ComponentValues.NO_MODIFIER, ComponentValues.NO_MODIFIER));
-        var spec = createEntry(id, parsedValues);
+        // 先查命名空间：`cell_component_1k` 这种漏写会被 tryParse 补成 minecraft:cell_component_1k，
+        // 而它当然不在注册表里，于是错误会被报成「物品不存在」——把最容易踩的坑指向错误的原因。
+        if (idText.indexOf(':') < 0) {
+            return IDeserializeResult.failure(localize(KEY + ".error.badId"));
+        }
+        var id = ResourceLocation.tryParse(idText);
+        if (id == null) {
+            return IDeserializeResult.failure(localize(KEY + ".error.badId"));
+        }
 
-        var diagnostics = new java.util.ArrayList<String>(values.getDiagnostics());
+        var diagnostics = new ArrayList<String>();
+        String[] parts = valuesText.split(":", -1);
+        if (parts.length > 4) {
+            diagnostics.add(localize(KEY + ".error.tooManyValues"));
+        }
+        long capacity = parseLong(parts, 0, diagnostics);
+        long transfer = parseLong(parts, 1, diagnostics);
+        double capacityMultiplier = parseMultiplier(parts, 2, diagnostics);
+        double transferMultiplier = parseMultiplier(parts, 3, diagnostics);
+        var spec = new ComponentSpec(id, capacity, transfer, capacityMultiplier, transferMultiplier);
+
         if (!registryReady || BuiltInRegistries.ITEM.containsKey(id)) {
             return diagnostics.isEmpty()
                     ? IDeserializeResult.success(spec)
@@ -125,8 +116,18 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
 
     @Override
     public boolean isValid(ComponentSpec spec) {
-        // null 防御性放行（不对空参数造噪音）；注册表未就绪时不判存在性，否则会把还没注册的模组物品误报。
-        return spec == null || !registryReady || BuiltInRegistries.ITEM.containsKey(spec.id());
+        // null 防御性放行（不对空参数造噪音）。数值面与 deserialize 的口径保持一致：它会把负值夹成 0、
+        // 把非有限倍率回落成 1.0，所以这里只拒绝「本来就存不了」的值。
+        if (spec == null) {
+            return true;
+        }
+        if (registryReady && !BuiltInRegistries.ITEM.containsKey(spec.id())) {
+            return false;
+        }
+        return spec.capacity() >= 0L
+                && spec.transfer() >= 0L
+                && isUsableMultiplier(spec.capacityMultiplier())
+                && isUsableMultiplier(spec.transferMultiplier());
     }
 
     @Override
@@ -134,140 +135,68 @@ final class ComponentSpecSerializer implements IConfigKeyValueSerializer<Compone
         return localize(KEY + ".syntax");
     }
 
-    // ---- 两列的序列化器 ----
-
-    /** 键列：物品 id。 */
-    private static final class KeySerializer implements IConfigValueSerializer<ResourceLocation> {
-
-        static final KeySerializer INSTANCE = new KeySerializer();
-
-        @Override
-        public String serialize(ResourceLocation id) {
-            return id == null ? "" : id.toString();
-        }
-
-        @Override
-        public IDeserializeResult<ResourceLocation> deserialize(String text) {
-            if (text == null || text.isBlank()) {
-                return IDeserializeResult.failure(localize(KEY + ".error.empty"));
-            }
-            var id = ResourceLocation.tryParse(text.trim());
-            // 不带命名空间会被当成 minecraft:xxx，匹配不上任何东西——这属于最容易踩的坑，所以单独报。
-            return id == null
-                    ? IDeserializeResult.failure(localize(KEY + ".error.badId"))
-                    : IDeserializeResult.success(id);
-        }
-
-        @Override
-        public boolean isValid(ResourceLocation id) {
-            return id == null || !registryReady || BuiltInRegistries.ITEM.containsKey(id);
-        }
-
-        @Override
-        public String getValidValuesDescription() {
-            return localize(KEY + ".syntax.id");
-        }
+    private static boolean isUsableMultiplier(double value) {
+        return Double.isFinite(value) && value >= 0.0D;
     }
 
-    /** 值列：`容量:速率[:容量倍率[:速率倍率]]`。 */
-    private static final class ValueSerializer implements IConfigValueSerializer<ComponentValues> {
-
-        static final ValueSerializer INSTANCE = new ValueSerializer();
-
-        @Override
-        public String serialize(ComponentValues values) {
-            return values == null ? "" : values.toString();
+    /**
+     * 倍率的文本形：整数写成整数，其余交给 {@link Double#toString}。
+     *
+     * <p>省掉 {@code .0} 是为了宽度——最长的一条内置条目写全四段是 65 个字符，在大 GUI 缩放下正好处在
+     * 「放得下 / 被截断」的边界上，省 4 个字符约 24px 就是那点余量。往返不受影响：{@code "1"} 解析回
+     * {@code 1.0}，再写出还是 {@code "1"}。</p>
+     */
+    static String formatMultiplier(double value) {
+        if (value == Math.floor(value) && Math.abs(value) < INTEGER_FORMAT_LIMIT) {
+            return Long.toString((long) value);
         }
-
-        @Override
-        public IDeserializeResult<ComponentValues> deserialize(String text) {
-            String trimmed = text == null ? "" : text.trim();
-            if (trimmed.isEmpty()) {
-                // 值列留空是合法写法：两个维度都是 0。
-                return IDeserializeResult.success(new ComponentValues(0L, 0L,
-                        ComponentValues.NO_MODIFIER, ComponentValues.NO_MODIFIER));
-            }
-            String[] parts = trimmed.split(":", -1);
-            if (parts.length > 4) {
-                return IDeserializeResult.partialSuccess(fromParts(parts), localize(KEY + ".error.tooManyValues"));
-            }
-            var diagnostics = new java.util.ArrayList<String>();
-            for (int i = 0; i < Math.min(parts.length, 2); i++) {
-                if (parseLong(parts[i]) == null) {
-                    diagnostics.add(localize(KEY + ".error.badValue", parts[i]));
-                }
-            }
-            for (int i = 2; i < parts.length; i++) {
-                if (parseDouble(parts[i]) == null) {
-                    diagnostics.add(localize(KEY + ".error.badMultiplier", parts[i]));
-                }
-            }
-            var values = fromParts(parts);
-            // 值与倍率全是默认值、且没写错时会走到这里：这是「把这个物品禁用」的写法，值得提醒一次。
-            if (diagnostics.isEmpty() && values.toString().equals("0:0")) {
-                return IDeserializeResult.partialSuccess(values, localize(KEY + ".warn.disablesItem"));
-            }
-            return diagnostics.isEmpty()
-                    ? IDeserializeResult.success(values)
-                    : IDeserializeResult.partialSuccess(values, diagnostics);
-        }
-
-        /** 解析失败的段按默认值算：条目保留下来、只附一条诊断，不让整行失效。 */
-        private static ComponentValues fromParts(String[] parts) {
-            long capacity = parts.length > 0 ? orZero(parseLong(parts[0])) : 0L;
-            long transfer = parts.length > 1 ? orZero(parseLong(parts[1])) : 0L;
-            double capacityMultiplier = parts.length > 2
-                    ? orDefault(parseDouble(parts[2]))
-                    : ComponentValues.NO_MODIFIER;
-            double transferMultiplier = parts.length > 3
-                    ? orDefault(parseDouble(parts[3]))
-                    : ComponentValues.NO_MODIFIER;
-            return new ComponentValues(capacity, transfer, capacityMultiplier, transferMultiplier);
-        }
-
-        @Override
-        public boolean isValid(ComponentValues values) {
-            return true;
-        }
-
-        @Override
-        public String getValidValuesDescription() {
-            return localize(KEY + ".syntax.values");
-        }
-
-        private static long orZero(Long value) {
-            return value == null ? 0L : value;
-        }
-
-        private static double orDefault(Double value) {
-            return value == null ? ComponentValues.NO_MODIFIER : value;
-        }
+        return Double.toString(value);
     }
 
-    // ---- 解析小工具 ----
+    // ---- 解析小工具：越界段按默认值算，坏数据只记诊断不抛 ----
 
-    private static Long parseLong(String text) {
-        if (text == null || text.isBlank()) {
+    /** 取第 {@code index} 段当 long；缺失给 0，写错或为负记诊断并给 0。 */
+    private static long parseLong(String[] parts, int index, List<String> diagnostics) {
+        if (index >= parts.length || parts[index].isBlank()) {
             return 0L;
         }
+        String text = parts[index].trim();
         try {
-            return Math.max(0L, Long.parseLong(text.trim()));
+            long parsed = Long.parseLong(text);
+            if (parsed < 0L) {
+                // 明说按 0 算：静默夹取会让「我明明写了 -1」变成一个查不出来的谜。
+                diagnostics.add(localize(KEY + ".error.negativeValue", text));
+                return 0L;
+            }
+            return parsed;
         } catch (NumberFormatException e) {
-            return null;
+            diagnostics.add(localize(KEY + ".error.badValue", text));
+            return 0L;
         }
     }
 
-    private static Double parseDouble(String text) {
-        if (text == null || text.isBlank()) {
-            return ComponentValues.NO_MODIFIER;
+    /** 取第 {@code index} 段当倍率；缺失给 1.0（不修正），写错、为负或非有限值记诊断并给 1.0。 */
+    private static double parseMultiplier(String[] parts, int index, List<String> diagnostics) {
+        if (index >= parts.length || parts[index].isBlank()) {
+            return NO_MODIFIER;
         }
+        String text = parts[index].trim();
         try {
-            double value = Double.parseDouble(text.trim());
+            double value = Double.parseDouble(text);
             // NaN / Infinity 会一路乘进公式：NaN 让整块模块容量变 0，Infinity 直接顶到 Long.MAX_VALUE。
             // 这不是「坏数据不参与计算」能兜住的，必须在入口挡住。
-            return Double.isFinite(value) ? Math.max(0.0D, value) : null;
+            if (!Double.isFinite(value)) {
+                diagnostics.add(localize(KEY + ".error.badMultiplier", text));
+                return NO_MODIFIER;
+            }
+            if (value < 0.0D) {
+                diagnostics.add(localize(KEY + ".error.negativeValue", text));
+                return NO_MODIFIER;
+            }
+            return value;
         } catch (NumberFormatException e) {
-            return null;
+            diagnostics.add(localize(KEY + ".error.badMultiplier", text));
+            return NO_MODIFIER;
         }
     }
 
