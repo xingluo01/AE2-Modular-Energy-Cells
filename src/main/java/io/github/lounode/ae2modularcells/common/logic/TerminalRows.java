@@ -6,6 +6,7 @@ import java.util.function.IntFunction;
 import org.jetbrains.annotations.Nullable;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 
 /**
  * 模块管理终端里的「行」：一段结构被排成一张按等级分组的平坦行表。
@@ -78,8 +79,8 @@ public final class TerminalRows {
         if (moduleCount <= 0) {
             return;
         }
-        // 外层按等级、内层按结构顺序：分组顺序因此是确定的（枚举顺序），与结构中各等级的分布无关。
-        for (var tier : EnergyCellTier.values()) {
+        // 外层按等级、内层按结构顺序：分组顺序因此是确定的（等级注册顺序），与结构中各等级的分布无关。
+        for (var tier : ModularCellTiers.all()) {
             int groupStart = out.size();
             int pending = 0;
             int[] indices = new int[MODULES_PER_ROW];

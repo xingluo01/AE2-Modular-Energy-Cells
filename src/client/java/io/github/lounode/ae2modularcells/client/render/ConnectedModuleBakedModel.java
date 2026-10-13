@@ -39,6 +39,7 @@ import appeng.client.render.cablebus.CubeBuilder;
 import io.github.lounode.ae2modularcells.AE2ModularCells;
 import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleModelData;
 
@@ -139,7 +140,7 @@ public final class ConnectedModuleBakedModel implements IDynamicBakedModel {
      */
     public static void install(ModelEvent.ModifyBakingResult event) {
         Map<ResourceLocation, net.minecraft.client.resources.model.BakedModel> byBlockId = new HashMap<>();
-        for (var tier : EnergyCellTier.values()) {
+        for (var tier : ModularCellTiers.all()) {
             String name = AEModularCellsRegistries.blockName(tier);
             byBlockId.put(
                     ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, name),

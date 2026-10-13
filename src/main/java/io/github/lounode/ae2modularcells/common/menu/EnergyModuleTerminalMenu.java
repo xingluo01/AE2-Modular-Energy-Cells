@@ -25,6 +25,7 @@ import appeng.menu.slot.AppEngSlot;
 import io.github.lounode.ae2modularcells.AE2ModularCells;
 import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
@@ -276,7 +277,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         }
         String wanted = tierId == null ? "" : tierId;
         if (!wanted.isEmpty()) {
-            var tier = EnergyCellTier.byId(wanted);
+            var tier = ModularCellTiers.byId(wanted);
             if (tier == null || (this.tierMask & StructureStats.tierBit(tier)) == 0) {
                 // 没这一档就不认；这也顺手挡住了「客户端乱报一个 id」的情形。
                 return;
@@ -438,7 +439,9 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         // 一字符制下上界 = 4096 字符，离上限有 8 倍余量。
         var snapshot = new StringBuilder(tiers.length);
         for (var tier : tiers) {
-            snapshot.append(tier == null ? (char) 63 : (char) (97 + tier.ordinal()));
+            // 一个等级一个字符（a 起）：这是两端配对的同步协议，位序与注册顺序一致，所以本模组三档仍是 a/b/c。
+            // 等级总数因此也受限于 26。
+            snapshot.append(tier == null ? (char) 63 : (char) (97 + ModularCellTiers.indexOf(tier)));
         }
         return snapshot.toString();
     }

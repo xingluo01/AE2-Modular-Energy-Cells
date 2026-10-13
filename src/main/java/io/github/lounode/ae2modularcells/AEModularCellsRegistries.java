@@ -1,6 +1,6 @@
 package io.github.lounode.ae2modularcells;
 
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,6 +28,7 @@ import appeng.block.AEBaseEntityBlock;
 import appeng.blockentity.AEBaseBlockEntity;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.block.BlankEnergyUnitBlock;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
@@ -57,12 +58,23 @@ public final class AEModularCellsRegistries {
     public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, AE2ModularCells.MOD_ID);
 
-    private static final Map<EnergyCellTier, DeferredBlock<EnergyCellModuleBlock>> MODULE_BLOCKS =
-            new EnumMap<>(EnergyCellTier.class);
-    private static final Map<EnergyCellTier, DeferredItem<BlockItem>> MODULE_ITEMS =
-            new EnumMap<>(EnergyCellTier.class);
-    private static final Map<EnergyCellTier, DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyCellModuleBlockEntity>>> MODULE_BLOCK_ENTITIES =
-            new EnumMap<>(EnergyCellTier.class);
+    // 键用等级 id（字符串）而不是等级实例：本类的 static 块在类加载时跑，那时等级注册表还是空的，
+    // 拿不到 EnergyCellTier 实例；而 DeferredHolder.getId() 在注册前就可用。
+    // 等级于是“按注册名索引”，与“名字即协议”一致。
+    private static final Map<String, DeferredBlock<EnergyCellModuleBlock>> MODULE_BLOCKS = new HashMap<>();
+    private static final Map<String, DeferredItem<BlockItem>> MODULE_ITEMS = new HashMap<>();
+    private static final Map<String, DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyCellModuleBlockEntity>>> MODULE_BLOCK_ENTITIES =
+            new HashMap<>();
+
+    /**
+     * 本模组内置的等级（方块只给自己的等级注册，其他模组的等级由它们自己注册方块）。
+     *
+     * <p>这里不能用 {@code ModularCellTiers.all()}：本类的 static 块在类加载时执行，而等级注册表的填充要到
+     * {@code RegisterEvent} 才发生——那一刻 {@code all()} 是一张空表，循环体一次也不会跑，下场是下面几张映射
+     * 全空、能力注册阶段直接 NPE。也不能用 {@code DeferredHolder#getId()}：它同样会去碰注册表，在那一刻抛
+     * 「Registry not present」。所以读的是 {@link ModularCellTiers#builtIn()}——那张表写的就是注册名。</p>
+     */
+    private static final Map<String, EnergyCellTier> BUILT_IN_TIERS = ModularCellTiers.builtIn();
 
     /**
      * 模块管理终端的菜单类型。
@@ -78,9 +90,9 @@ public final class AEModularCellsRegistries {
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN_TAB = CREATIVE_TABS.register("main",
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup." + AE2ModularCells.MOD_ID))
-                    .icon(() -> new ItemStack(moduleItem(EnergyCellTier.BASIC).get()))
+                    .icon(() -> new ItemStack(moduleItem(ModularCellTiers.BASIC.get()).get()))
                     .displayItems((parameters, output) -> {
-                        for (var tier : EnergyCellTier.values()) {
+                        for (var tier : ModularCellTiers.all()) {
                             output.accept(moduleItem(tier).get());
                         }
                         // 必须写全限定名：本字段的声明在下面，而 Java 不允许静态字段初始化表达式里用简单名「向前引用」
@@ -136,15 +148,18 @@ public final class AEModularCellsRegistries {
             new java.util.IdentityHashMap<>();
 
     static {
-        for (var tier : EnergyCellTier.values()) {
-            String name = blockName(tier);
+        for (var entry : BUILT_IN_TIERS.entrySet()) {
+            String key = entry.getKey();
+            EnergyCellTier tier = entry.getValue();
+            // 名字用注册名拼，实例在这个阶段还取不到（RegisterEvent 按注册表逐个触发，等级可能还没登记）。
+            String name = blockName(key);
             DeferredBlock<EnergyCellModuleBlock> block = BLOCKS.register(name,
                     () -> new EnergyCellModuleBlock(tier, BlockBehaviour.Properties.of()
                             .strength(2.5F, 6.0F)
                             .requiresCorrectToolForDrops()));
-            MODULE_BLOCKS.put(tier, block);
-            MODULE_ITEMS.put(tier, ITEMS.registerSimpleBlockItem(name, block));
-            MODULE_BLOCK_ENTITIES.put(tier, BLOCK_ENTITIES.register(name, () -> createModuleBlockEntityType(block)));
+            MODULE_BLOCKS.put(key, block);
+            MODULE_ITEMS.put(key, ITEMS.registerSimpleBlockItem(name, block));
+            MODULE_BLOCK_ENTITIES.put(key, BLOCK_ENTITIES.register(name, () -> createModuleBlockEntityType(block)));
         }
         for (var monitor : List.of(ENERGY_MONITOR, FLOW_MONITOR)) {
             MONITOR_BLOCK_ENTITIES.put(monitor, BLOCK_ENTITIES.register(monitor.getId().getPath(),
@@ -196,7 +211,17 @@ public final class AEModularCellsRegistries {
 
     /** 方块（也是方块物品、方块实体、模型与贴图）的注册名。 */
     public static String blockName(EnergyCellTier tier) {
-        return tier.id() + "_energy_cell_module";
+        return blockName(tier.id());
+    }
+
+    /**
+     * 方块注册名，按等级 id 拼。
+     *
+     * <p>分开一个重载是因为注册期（{@code AEModularCellsRegistries} 的 static 块）拿不到等级实例——那时
+     * 等级注册表还没填，而方块名必须先算出来。</p>
+     */
+    public static String blockName(String tierId) {
+        return tierId + "_energy_cell_module";
     }
 
     /**
@@ -214,20 +239,22 @@ public final class AEModularCellsRegistries {
     }
 
     public static DeferredBlock<EnergyCellModuleBlock> moduleBlock(EnergyCellTier tier) {
-        return MODULE_BLOCKS.get(tier);
+        return MODULE_BLOCKS.get(tier.id());
     }
 
     public static DeferredItem<BlockItem> moduleItem(EnergyCellTier tier) {
-        return MODULE_ITEMS.get(tier);
+        return MODULE_ITEMS.get(tier.id());
     }
 
     public static DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyCellModuleBlockEntity>> moduleBlockEntity(
             EnergyCellTier tier) {
-        return MODULE_BLOCK_ENTITIES.get(tier);
+        return MODULE_BLOCK_ENTITIES.get(tier.id());
     }
 
     /** 把注册器挂到模组总线上；由 {@link AE2ModularCells} 的构造器调用。 */
     public static void register(IEventBus modBus) {
+        // 等级注册器要先挂上：下面的方块注册引用等级实例，而等级本身在其静态初始化里已注册进注册表。
+        ModularCellTiers.register(modBus);
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         BLOCK_ENTITIES.register(modBus);
@@ -251,8 +278,9 @@ public final class AEModularCellsRegistries {
         // 代表物品：AE2 用它做「名称回退」与「导出设置」的来源。不注册时 getItemFromBlockEntity() 落到
         // Items.AIR——扳手拆下来的方块，物品提示里来源会显示成 Air（那把扳手流程正好要用 exportSettings）。
         // 时机必须晚于物品注册：BE 类型注册的 lambda 里 DeferredItem 还没注册，.get() 会抛。
-        for (var tier : EnergyCellTier.values()) {
-            AEBaseBlockEntity.registerBlockEntityItem(MODULE_BLOCK_ENTITIES.get(tier).get(), moduleItem(tier).get());
+        for (var entry : BUILT_IN_TIERS.entrySet()) {
+            AEBaseBlockEntity.registerBlockEntityItem(MODULE_BLOCK_ENTITIES.get(entry.getKey()).get(),
+                    moduleItem(entry.getValue()).get());
         }
         AEBaseBlockEntity.registerBlockEntityItem(monitorBlockEntity(ENERGY_MONITOR), ENERGY_MONITOR_ITEM.get());
         AEBaseBlockEntity.registerBlockEntityItem(monitorBlockEntity(FLOW_MONITOR), FLOW_MONITOR_ITEM.get());

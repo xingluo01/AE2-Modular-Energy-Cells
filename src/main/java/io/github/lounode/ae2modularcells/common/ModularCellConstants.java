@@ -80,10 +80,10 @@ public final class ModularCellConstants {
         return side >= MIN_SIDE && side <= MAX_SIDE;
     }
 
-    /** 单个模块最多能插几个组件——取三个等级里的最大值，用作菜单与存档读取时的防御上界。 */
+    /** 单个模块最多能插几个组件——取所有等级里的最大值（含第三方注册的），用作菜单与存档读取时的防御上界。 */
     public static int maxComponentSlots() {
         int max = 0;
-        for (var tier : EnergyCellTier.values()) {
+        for (var tier : ModularCellTiers.all()) {
             max = Math.max(max, tier.componentSlots());
         }
         return max;

@@ -2,6 +2,7 @@ package io.github.lounode.ae2modularcells.common.logic;
 
 import io.github.lounode.ae2modularcells.common.ComponentGain;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 
 /**
  * 一段结构（或一块独立模块）的能量账目快照。
@@ -14,7 +15,7 @@ import io.github.lounode.ae2modularcells.common.EnergyCellTier;
  * {@code V_in_max}）是**逐块提供量之和**（见 {@link #rateCapSum} / {@link #inputCapSum}），与代表等级无关。</p>
  *
  * @param tier              整段的代表等级 = 出现过的最高档（只用于界面文案；不再用来夹速率）
- * @param tierMask          出现过的等级位掩码，第 {@code ordinal()} 位为 1 即出现过
+ * @param tierMask          出现过的等级位掩码，第 {@code ModularCellTiers#indexOf} 位为 1 即出现过
  * @param side              边长；未成型的单块按展示口径记 1
  * @param totalCapacity     总容量 T = Σ D_j（每块按自己的档）
  * @param totalTransferRate 总速率 T_v = min(Σ D_vj, Σ V_max_j)
@@ -64,8 +65,8 @@ public record StructureStats(EnergyCellTier tier, int tierMask, int side, long t
                 tier.maxTransferRate(), tier.maxInputRate());
     }
 
-    /** 某一档对应的位掩码位。 */
+    /** 某一档对应的位掩码位：位号就是等级在注册表里的整数 id（也就是注册顺序）。 */
     public static int tierBit(EnergyCellTier tier) {
-        return 1 << tier.ordinal();
+        return ModularCellTiers.bitOf(tier);
     }
 }

@@ -34,6 +34,7 @@ import appeng.util.inv.InternalInventoryHost;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.ModularCellConstants;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.block.StructurePart;
@@ -1264,7 +1265,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             rateCap += moduleTier.maxTransferRate();
             inputCap += moduleTier.maxInputRate();
             tierMask |= StructureStats.tierBit(moduleTier);
-            if (moduleTier.ordinal() > capTier.ordinal()) {
+            if (ModularCellTiers.indexOf(moduleTier) > ModularCellTiers.indexOf(capTier)) {
                 capTier = moduleTier;
             }
         }
@@ -1820,8 +1821,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     private EnergyCellTier highestTier(int tierMask) {
         var highest = tier;
-        for (var candidate : EnergyCellTier.values()) {
-            if ((tierMask & StructureStats.tierBit(candidate)) != 0 && candidate.ordinal() > highest.ordinal()) {
+        for (var candidate : ModularCellTiers.all()) {
+            if ((tierMask & StructureStats.tierBit(candidate)) != 0
+                    && ModularCellTiers.indexOf(candidate) > ModularCellTiers.indexOf(highest)) {
                 highest = candidate;
             }
         }

@@ -28,6 +28,7 @@ import appeng.menu.SlotSemantic;
 import appeng.menu.SlotSemantics;
 
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
+import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
 import io.github.lounode.ae2modularcells.common.logic.TerminalRows;
 import io.github.lounode.ae2modularcells.common.menu.EnergyModuleSlotSemantics;
@@ -595,12 +596,12 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
                     this.localRows.add(new TerminalRows.Row(null, first, count, indices));
                 }
             } else {
-                // 与 buildStructureSnapshot 对应的一字符制：a + 枚举序号，? 表示这一块拿不到等级。
-                var values = EnergyCellTier.values();
+                // 与 buildStructureSnapshot 对应的一字符制：a + 注册序号，? 表示这一块拿不到等级。
+                var values = ModularCellTiers.all();
                 var tiers = new EnergyCellTier[snapshot.length()];
                 for (int index = 0; index < snapshot.length(); index++) {
                     int code = snapshot.charAt(index) - 97;
-                    tiers[index] = code >= 0 && code < values.length ? values[code] : null;
+                    tiers[index] = code >= 0 && code < values.size() ? values.get(code) : null;
                 }
                 TerminalRows.build(tiers.length, index -> tiers[index], this.localRows);
             }
