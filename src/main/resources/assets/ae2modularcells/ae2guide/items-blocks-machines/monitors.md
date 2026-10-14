@@ -17,7 +17,7 @@ Two display-only panels. Placed inside a cube they count as structure parts: the
 
 A monitor is a structure part and nothing else, so it holds no account of its own. A structure therefore needs at least one module: a cube of nothing but monitors never forms. Any module can be the core, which is simply the first one in layout order, so you never have to reserve a corner for it.
 
-## Energy Monitor
+## Energy Storage Monitor
 
 Shows the whole structure's stored energy as a percentage, on one centered line.
 

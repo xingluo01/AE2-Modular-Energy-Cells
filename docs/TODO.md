@@ -56,6 +56,7 @@
 - ⬜ 实机确认（本轮不做，用户口径：不上实机）：开屏不抛、三枚按钮的落点与轮换、进度条数值与条长、**首行是模块行 / 末行是标题行时表外缘缺的 1px 边线**（见第四节）
 - ⬜ **公式系数热改后，增量累加的账目会短暂混口径**：组件变化走差值累加（见 `docs/ARCHITECTURE.md` §2.6），而 `componentDiscount` / `countBonus` / `inputRatio` 改动后，已有账目是按旧系数算的——要到下一次整段重扫才归一（旧实现每次都全扫，天然没有这个问题）。修法：配置刷新时给所有成型结构排一次重扫（往合并队列里塞一遍即可）。
 - ⬜ 坐标标签没有落点了：模块展示槽随行表一起去掉（现在一条带是按档聚合的组件行），要显示某一块的坐标得另找地方
+- ⬜ **两个语言键名与它们的显示文案脱节**：`jade.ae2modularcells.module_size` 的文案已改成「结构边长」（它的值其实来自 `StructureStats.side`），键名却还叫 `module_size`；同类的还有 Jade 插件 id `module_structure`。改名只牵动 `ModularCellTooltipProvider` 一处取键处，但**后者是 Jade 注册的插件 id**（玩家在 Jade 设置里看到的插件名由它的文案键决定），改名要看 Jade 那边能不能容忍旧名——收益为零（玩家看不到键名），暂不动。
 - ⬜ **结构账目不含组件内容，界面可能停在旧数据上**：行表缓存与三份快照的失效键都是 `StructureStats`（`EnergyCellModuleBlockEntity#rows` 与 `EnergyModuleTerminalMenu#syncFromHost`），而它只装增益类数值。两类改动不会让它变化：① 插入**贡献全 0** 的组件（配置允许写成 `0:0`）；② 两种**数值相同**的组件互换（配置或第三方撞值）。这时 a/b 与格内件数都跟真实值对不上，重开终端才恢复。修法是给 `StructureStats` 加一份组件内容指纹（件数 + 种类），属设计改动。
 - ⬜ **一格超过 64 件时取不干净**：组件槽报给原版的件数封顶 64（`EnergyModuleSlotSemantics.MAX_REPORTED_COUNT`，超过一叠就可能被上层按一叠处理坏掉），所以一格装了 81 件时左键取整格只拿到 64、「取一半」拿到 32（真实的一半是 41）。要彻底对齐得给组件槽一个按真实件数算移除量的槽类。**注意这个封顶只管搬运量，不影响显示**：原版那份数字已被 `AppEngSlot#setHideAmount` 关掉，屏幕画的是真实件数（见 `docs/ARCHITECTURE.md` §3.2）。
 
