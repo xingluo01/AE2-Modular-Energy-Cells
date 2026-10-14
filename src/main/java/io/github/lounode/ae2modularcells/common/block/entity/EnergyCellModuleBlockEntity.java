@@ -6,6 +6,7 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -13,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.Item;
@@ -21,6 +23,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.client.model.data.ModelData;
 
@@ -107,6 +110,14 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      */
     @Nullable
     private List<EnergyCellModuleBlockEntity> memberCache;
+
+    /**
+     * 本块自己的容量与速率贡献（单块口径）。
+     *
+     * <p>组件变化走轻路径时靠它算差值：光看 {@code ownStats} 不行——核心那一份装的是**整段**账目。
+     * 结构变更时由 {@link #applyStructureRef} 重写。</p>
+     */
+    private CellMath.ModuleGains ownGains;
 
     /** 这一段的监控器位置（只在核心上缓存，结构重算时作废）：网格 tick 只给它们推读数。 */
     @Nullable
@@ -228,6 +239,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // 组件槽一个槽只放一件：容量折扣按「插了几件」算，堆叠会让公式失去意义。
         this.components = new AppEngInternalInventory(this, tier.componentSlots(), 1);
         this.ownStats = StructureStats.single(tier, new ComponentGain[0]);
+        // 本块自己的贡献（单块口径）：组件变化时靠它算差值，见 refreshComponentGains。
+        recomputeOwnGains();
         // 构造期先按「未成型」登记：网格只在入网那一刻按这个旗标登记存储节点，旗标晚一步翻就摘不掉
         // （见 onReady 上方那段）。真正的值由 onReady 与结构变更时的 afterStructureReferenceChanged 重设。
         setInternalPublicPowerStorage(false);
@@ -235,12 +248,76 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
 
     // ---- 组件槽：库存事件 ----
 
-    /** 组件变了就是一次结构变更（三个触发时机之一），同时把方块实体标脏。 */
+    /** 组件变了：只重算本块的贡献，**不重扫结构**（组件不改成员集合）。 */
     @Override
     public void onChangeInventory(AppEngInternalInventory inv, int slot) {
         if (!this.loading) {
-            rebuildStructure();
+            refreshComponentGains();
         }
+    }
+
+    /**
+     * 组件变化的轻路径：重算本块的容量与速率贡献，把差值并进核心的账目。
+     *
+     * <p><b>这条路绝不能重扫结构</b>：一次 16³ 的检测要从起点洪泛四千多块、每块问六个邻居（两万多步），
+     * 而组件变化是高频动作——输出/输入总线一次搬一组就是 64 件，每件都会走到这里。原先这条路径调的是
+     * {@link #rebuildStructure()}（注释还写着「组件变了就是一次结构变更」），于是「搬一组组件」就变成
+     * 64 次全结构扫描 + 64 次成员表重建，16³ 下直接把服务端 tick 拖死。</p>
+     *
+     * <p>组件真正改变的只有两样：这一块的 {@code D} 与 {@code D_v}。边长、等级掩码、两个上限之和（只跟方块
+     * 有关）都不动，所以账目可以按差值平移（见 {@link StructureStats#plusGains}），不必重算。</p>
+     *
+     * <p>核心不在场（区块未加载）时什么都不做：账目暂时偏旧，要到下一次结构变更、或核心区块重新加载时那趟
+     * 校准重扫（见 {@code onReady} 末尾）才重算对。组件本身已经落在槽里、也照常落盘，不会丢。</p>
+     */
+    private void refreshComponentGains() {
+        var level = this.level;
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        var before = this.ownGains;
+        recomputeOwnGains();
+        var after = this.ownGains;
+        long capacityDelta = after.capacity() - before.capacity();
+        long rateDelta = after.transfer() - before.transfer();
+        if (capacityDelta == 0L && rateDelta == 0L) {
+            return;
+        }
+        var core = resolveCore();
+        if (core == null) {
+            return;
+        }
+        core.applyGainsDelta(capacityDelta, rateDelta);
+        if (core != this) {
+            // 本块那份「单块账目」也要跟上：未成型、或将来核心不在场时，它就是这一段的账目。
+            this.ownStats = this.ownStats.plusGains(capacityDelta, rateDelta);
+        }
+    }
+
+    /**
+     * 重算本块自己的贡献（单块口径，见 {@link #ownGains}）。
+     *
+     * <p><b>四处必须调</b>：构造、**读档**、退化为独立元件、跨块参考重写（{@link #applyStructureRef}），
+     * 外加组件变化本身。读档那处尤其不能漏——组件是从 NBT 恢复的，而本字段在构造那一刻还是空的，漏了就会
+     * 把「整块贡献」当成差值并进账目（组件变化走差值累加，基准错了会一路错下去）。</p>
+     */
+    private void recomputeOwnGains() {
+        this.ownGains = CellMath.moduleGains(this.tier, componentGainsScratch());
+    }
+
+    /**
+     * 把某一块的贡献差值并进本块手里的账目（组件变化专用，见 {@link #refreshComponentGains}）。
+     *
+     * <p>只有核心会收到这个调用。它故意不动 {@code memberCache}：成员集合没变，而那一份正是槽位摊平
+     * （{@code StructureComponentItemHandler}）的缓存键——作废它就会把每次插入拖回「重建一万两千项」。</p>
+     */
+    private void applyGainsDelta(long capacityDelta, long rateDelta) {
+        this.ownStats = this.ownStats.plusGains(capacityDelta, rateDelta);
+        // 容量变了，父类那个夹取上限要跟着走，否则存量会被 setStored 静默夹到旧值。
+        setInternalMaxPower((double) this.ownStats.totalCapacity());
+        // 行表按「每档几种组件」延伸，组件一变行数就可能变，所以这份缓存要作废（成员表不受影响）。
+        this.rowCache = null;
+        setChanged();
     }
 
     /** 库存的任何改动都要落盘：这一条以前是暗的（靠重建结构顺带 setChanged），现在钉死在接口上。 */
@@ -923,12 +1000,18 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * → rebuildAt}），异常一旦漏出去就是服务端的 {@code Exception ticking world}——当场终止、未落盘的区块
      * 改动全丢（线上已经发生过一次：扫描越界 {@code Index 570 > 562}）。</p>
      */
-    public void rebuildStructure() {
+    /**
+     * 重扫一次结构，并把这次扫到的段回给调用方（没成型或判不了给 {@code null}）。
+     *
+     * <p>返回值是给合并队列用的：它要知道这一次扫覆盖了哪一段，才能把同一段里剩下的坐标从队列里剔掉。</p>
+     */
+    @Nullable
+    public MultiblockScanner.Layout rebuildStructure() {
         var level = this.level;
         if (level == null || level.isClientSide()) {
-            return;
+            return null;
         }
-        guardStructure("重扫（放置 / 破坏 / 组件变化）", this::rescanStructure);
+        return guardStructureGet("重扫（放置 / 破坏）", this::rescanStructure);
     }
 
     /**
@@ -937,13 +1020,25 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * <p>三种结论各走一路：成立就落到整段，确定不成立就回退成独立元件，<b>判不了（邻居没加载完）就什么都不做</b>
      * ——保留上一次算出来的状态。把「看不到」当成「不成型」，一次跨区块的区块加载就能把一段好结构判没。</p>
      */
-    private void rescanStructure() {
+    /**
+     * 单次重扫超过这个耗时（毫秒）就打一条 WARN。
+     *
+     * <p>结构检测的成本 ∝ 结构体积：一次 16³ 的检测要洪泛四千多块、并逐块问六个邻居。没有这个数字，
+     * 线上只能靠「卡不卡」判断，而卡不卡还取决于同 tick 里有多少次触发（建筑手杖放一层就是几百次）。
+     * 合并窗口落地后，这里应该只会偶尔看到一条——若又变成频繁出现，说明有新的路径在绕过队列。</p>
+     */
+    private static final long SLOW_RESCAN_MILLIS = 20L;
+
+    @Nullable
+    private MultiblockScanner.Layout rescanStructure() {
+        long startedAt = System.nanoTime();
         var result = MultiblockScanner.scan(level, worldPosition);
         switch (result.status()) {
             case FORMED -> {
                 // 不再要求「最小角那块是储能模块」：核心由 applyStructure 在成员里挑（监控器不持有账目，不能当核心，
                 // 但它在结构里的任何位置都是合法的）。整段只有监控器、一块模块都没有时，那边会自己退回去。
                 applyStructure(result.layout());
+                return result.layout();
             }
             case NOT_FORMED -> {
                 // 这是一条**静默**路径：没异常、没崩溃，玩家只看到「结构自己散开」。所以必须留下「为什么」，
@@ -956,9 +1051,17 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
                 clearStructure();
             }
             case INDETERMINATE -> {
-                // 有意留空：等下一次触发（放置 / 破坏 / 组件变化 / 玩家右键）再算。
+                // 有意留空：等下一次触发（放置 / 破坏 / 玩家右键）再算。
             }
         }
+        long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
+        if (elapsedMillis >= SLOW_RESCAN_MILLIS) {
+            var layout = result.layout();
+            LOG.warn("[结构] 单次重扫耗时 {} ms（{} @ {}，{}）——结构越大越贵；连续放置应当被合并成一次重扫",
+                    elapsedMillis, layout == null ? "未成型" : layout.side() + "³", worldPosition,
+                    result.status());
+        }
+        return result.layout();
     }
 
     /**
@@ -989,10 +1092,20 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     private long lastFaultLogTick = Long.MIN_VALUE;
 
     private void guardStructure(String entry, Runnable action) {
-        try {
+        guardStructureGet(entry, () -> {
             action.run();
+            return null;
+        });
+    }
+
+    /** {@link #guardStructure} 的带返回值版本：异常时给 {@code null}，日志与限流口径完全一致。 */
+    @Nullable
+    private <T> T guardStructureGet(String entry, java.util.function.Supplier<T> action) {
+        try {
+            var result = action.get();
             // 跑通了就把限流记忆清掉：下一次失败仍然值得看一次完整堆栈。
             this.lastFaultEntry = null;
+            return result;
         } catch (Exception e) {
             long now = this.level == null ? 0L : this.level.getGameTime();
             var where = this.level == null ? "unknown" : this.level.dimension().location().toString();
@@ -1002,10 +1115,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             this.lastFaultLogTick = now;
             if (repeated) {
                 LOG.warn("[结构] {} 仍在失败（同类故障限流中）：{} @ {}", entry, worldPosition, where);
-                return;
+                return null;
             }
             LOG.error("[结构] {} 失败，本轮跳过（保留原状态，可能需重扫自愈）：{} @ {}，core={}，origin={}，side={}",
                     entry, worldPosition, where, this.corePos, this.structureOrigin, this.ownStats.side(), e);
+            return null;
         }
     }
 
@@ -1015,18 +1129,76 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
      * <p>这一层也要包：{@code getBlockEntity} 自己就可能出问题（邻块要经同步区块加载），而它是与
      * {@link #rebuildStructure()} 并列的入口——从谁那里漏出去，结果都是服务端 tick 崩塌。</p>
      */
-    public static void rebuildAt(Level level, BlockPos pos) {
-        if (level.isClientSide()) {
+    /**
+     * 本 tick 待重扫的坐标，按维度分（{@link GlobalPos} 自带维度）。
+     *
+     * <p><b>为什么不立即扫</b>：连续放置时每一次放置都会触发一次重扫，而建筑手杖放一层就是几百次、
+     * 一次 16³ 的检测要洪泛四千多块并逐块问六个邻居。改成入队 + 本 tick 末统一处理，同一段结构的坐标
+     * 在那边会被剔掉，于是「一整层」只花一次检测（历史记录：六个方向各扫一遍曾实测单 tick 落后 8~11 秒，
+     * 那是同一个根因的另一副面孔）。</p>
+     */
+    private static final Set<GlobalPos> PENDING_RESCANS = new HashSet<>();
+
+    /**
+     * 一个 tick 最多处理几个待重扫坐标。
+     *
+     * <p>「剔除同段坐标」只在扫出整段时生效；没成型或判不了时剔不掉任何东西，于是同一片连通体排队的坐标会
+     * 逐个各扫一遍——大结构上再糊一层就会在单 tick 里堆起来。加个上限：超出的留到下一 tick（队列不清空，
+     * 只是这一轮不碰），宁可晚一两 tick 也不要让一次放置潮汐占满整 tick。</p>
+     */
+    private static final int MAX_RESCANS_PER_TICK = 8;
+
+    /**
+     * 服务端每 tick 末处理一次待重扫队列。
+     *
+     * <p>集合通常是空的，代价就是一次 {@code isEmpty}——不是轮询（没有待办就不做任何事）。</p>
+     *
+     * <p>同一段只扫一次的做法：扫出 layout 后把它的成员坐标从队列里剔掉。手杖放一层的坐标全在同一段里，
+     * 于是几百个待办收敛成一次检测。</p>
+     */
+    public static void onServerTick(ServerTickEvent.Post event) {
+        if (PENDING_RESCANS.isEmpty()) {
             return;
         }
-        try {
-            if (level.getBlockEntity(pos) instanceof EnergyCellModuleBlockEntity module) {
-                module.rebuildStructure();
+        var server = event.getServer();
+        var cursor = new BlockPos.MutableBlockPos();
+        int processed = 0;
+        while (processed < MAX_RESCANS_PER_TICK) {
+            // 每轮新建迭代器：重扫本身会往外队列入新坐标（放置时的邻居），复用同一个会撞 ConcurrentModification。
+            var iterator = PENDING_RESCANS.iterator();
+            if (!iterator.hasNext()) {
+                break;
             }
-        } catch (Exception e) {
-            LOG.error("[结构] 放置 / 邻居重扫入口失败，本轮跳过：{} @ {}", pos,
-                    level.dimension().location(), e);
+            var global = iterator.next();
+            iterator.remove();
+            processed++;
+            var level = server.getLevel(global.dimension());
+            if (level == null || !level.isLoaded(global.pos())) {
+                continue;
+            }
+            if (!(level.getBlockEntity(global.pos()) instanceof EnergyCellModuleBlockEntity module)) {
+                continue;
+            }
+            var layout = module.rebuildStructure();
+            if (layout == null) {
+                continue;
+            }
+            int count = layout.moduleCount();
+            for (int index = 0; index < count; index++) {
+                layout.modulePos(index, cursor);
+                PENDING_RESCANS.remove(GlobalPos.of(global.dimension(), cursor.immutable()));
+            }
         }
+    }
+
+    /**
+     * 放置 / 邻居变化的重扫入口：只登记待办，真正的重扫由 {@link #onServerTick} 在本 tick 末做。
+     */
+    public static void rebuildAt(Level level, BlockPos pos) {
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        PENDING_RESCANS.add(GlobalPos.of(level.dimension(), pos.immutable()));
     }
 
     /**
@@ -1135,6 +1307,7 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     /** 退化为独立元件：自己就是核心，账目按自己槽里的组件算。 */
     private void becomeStandalone() {
         var single = StructureStats.single(tier, componentGainsScratch());
+        recomputeOwnGains();
         boolean wasCore = isCore();
         boolean changed = this.corePos != null || this.structureOrigin != null || !this.ownStats.equals(single);
         if (changed) {
@@ -1245,6 +1418,13 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
 
         var capTier = tier;
         int tierMask = 0;
+        // 单一能量池：整段只留一份能量，落在核心（待定项 3：拆结构时能量留在核心方块）。
+        //
+        // 只在「刚进入这段结构」时搬运：已经在结构里的块重扫一次不该再搬一次，否则同一份能量会被反复相加、
+        // 池子随重扫次数放大。（旧注释把这句写在三趟之间的第二趟里；现在它与求和共用第一趟——corePos 在
+        // 循环之前就已经定了，两件事没有先后依赖，分两趟只是白白再查 4096 次方块实体。）
+        long carried = 0L;
+        int newcomers = 0;
         for (int index = 0; index < count; index++) {
             layout.modulePos(index, cursor);
             if (!(level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module)) {
@@ -1257,6 +1437,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
                     return;
                 }
                 continue;
+            }
+            if (!isAlreadyPartOf(module, corePos)) {
+                carried += module.localStoredEnergy();
+                newcomers++;
             }
             var moduleTier = module.tier();
             // 一次算出这一块的容量与速率：两者共用同一个「插了几个组件」计数（见 CellMath#moduleGains）。
@@ -1271,21 +1455,6 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             }
         }
         var stats = StructureStats.of(capTier, tierMask, layout.side(), capacity, rate, rateCap, inputCap);
-
-        // 单一能量池：整段只留一份能量，落在核心（待定项 3：拆结构时能量留在核心方块）。
-        //
-        // 只在「刚进入这段结构」时搬运：已经在结构里的块重扫一次不该再搬一次，否则同一份能量会被反复相加、
-        // 池子随重扫次数放大。（成型后在结构里改一个组件就会重扫，这条路径很常走。）
-        long carried = 0L;
-        int newcomers = 0;
-        for (int index = 0; index < count; index++) {
-            layout.modulePos(index, cursor);
-            if (level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module
-                    && !isAlreadyPartOf(module, corePos)) {
-                carried += module.localStoredEnergy();
-                newcomers++;
-            }
-        }
 
         for (int index = 0; index < count; index++) {
             layout.modulePos(index, cursor);
@@ -1370,6 +1539,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         BlockPos newCorePos = isCore ? null : corePos;
         BlockPos newOrigin = isCore ? origin : null;
         var newStats = isCore ? stats : StructureStats.single(tier, componentGainsScratch());
+        // 单块贡献缓存：组件轻路径（refreshComponentGains）算差值要用。
+        recomputeOwnGains();
 
         // 行表缓存无条件作废（包括下面提前 return 的那条路径）：
         // 缓存键是账目快照，而“把两块方块的等级互换”这类改动可能让总容量/速率/边长/掩码恰好不变，
@@ -1880,6 +2051,9 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         } finally {
             this.loading = false;
         }
+        // 组件刚从 NBT 恢复，而本字段还是构造时那份「零组件」——必须在这里重算一次：
+        // 组件变化走的是差值累加（见 refreshComponentGains），基准错了会把整块贡献当成差值并进账目。
+        recomputeOwnGains();
         this.corePos = data.contains("core") ? BlockPos.of(data.getLong("core")) : null;
         // 成型外观靠模型数据（成型与否 + 连接位），而它在客户端是按位置缓存的：收到同步包不会自动失效。
         // 服务端在结构变化时已经推过一条（markForClientUpdate = requestModelDataUpdate + sendBlockUpdated），
@@ -1972,6 +2146,10 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         // 而 isFormed() 查的是 resolveCore() 的账目——成员同样为 true，拦不信它。
         if (isCore()) {
             guardStructure("核心加载后重推成员暴露面", this::refreshMemberExposure);
+            // 账目校准：核心不在场期间发生的组件变化会被轻路径放弃（那时 resolveCore 拿不到核心），差值就丢了；
+            // 而核心读档只把 NBT 里的账目装回来、并不重算，所以不补这一下就一直没有自愈路径。借现有的合并
+            // 队列补一次整段重扫——顺便把所有「核心加载后账目可能陈旧」的情形一起归位。
+            rebuildAt(this.level, this.worldPosition);
         }
     }
 

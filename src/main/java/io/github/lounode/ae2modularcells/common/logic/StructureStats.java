@@ -18,17 +18,23 @@ import io.github.lounode.ae2modularcells.common.ModularCellTiers;
  * @param tierMask          出现过的等级位掩码，第 {@code ModularCellTiers#indexOf} 位为 1 即出现过
  * @param side              边长；未成型的单块按展示口径记 1
  * @param totalCapacity     总容量 T = Σ D_j（每块按自己的档）
+ * @param summedModuleRate  未收口的模块速率之和 Σ D_vj（不含两个上限的夹取）
  * @param totalTransferRate 总速率 T_v = min(Σ D_vj, Σ V_max_j)
  * @param totalInputRate    总输入速率 T_in = min(T_v × f_in, Σ V_in_max_j)
  * @param rateCapSum        整段速率上限之和 Σ V_max_j（逐块提供量之和，存档要跟着走）
  * @param inputCapSum       整段输入上限之和 Σ V_in_max_j
  *
- * <p><b>这个记录必须保持「结构级稳定」</b>：终端把行表（{@code rowLayout}）当缓存键、只在它变化时重填；
- * 谁要是在这里加一个随存量/实时速率变动的字段，行表就会逐 tick 变化，重填与重同步（{@code setRowOffset}）
- * 随之退化并每帧发包。实时量走另外的同步字段（如输入速率）。</p>
+ * <p><b>为什么要把未收口的 Σ D_vj 也存下来</b>：两个 min 不可逆，只有收口后的值就拼不回原式。
+ * 组件变化走的是一条不重扫结构的轻路径（见 {@code EnergyCellModuleBlockEntity#refreshComponentGains}）——
+ * 它只知道「这一块的速率变了多少」，得把这个差值加回未收口的和上重新收口。少了这个字段就只能整段重算。</p>
+ *
+ * <p><b>这个记录必须保持「结构级稳定」</b>：终端把行表当缓存键、只在它变化时重填；谁要是在这里加一个随
+ * 存量/实时速率变动的字段，行表就会逐 tick 变化，重填与重同步（{@code setRowOffset}）随之退化并每帧发包。
+ * 实时量走另外的同步字段（如输入速率）。</p>
  */
 public record StructureStats(EnergyCellTier tier, int tierMask, int side, long totalCapacity,
-        long totalTransferRate, long totalInputRate, long rateCapSum, long inputCapSum) {
+        long summedModuleRate, long totalTransferRate, long totalInputRate, long rateCapSum,
+        long inputCapSum) {
 
     /** 结构内的模块数（边长³）。 */
     public int moduleCount() {
@@ -49,9 +55,22 @@ public record StructureStats(EnergyCellTier tier, int tierMask, int side, long t
     public static StructureStats of(EnergyCellTier tier, int tierMask, int side, long totalCapacity,
             long summedModuleRates, long summedMaxTransferRates, long summedMaxInputRates) {
         long transfer = CellMath.totalTransferRate(summedModuleRates, summedMaxTransferRates);
-        return new StructureStats(tier, tierMask, side, totalCapacity, transfer,
+        return new StructureStats(tier, tierMask, side, totalCapacity, summedModuleRates, transfer,
                 CellMath.totalInputRate(transfer, summedMaxInputRates), summedMaxTransferRates,
                 summedMaxInputRates);
+    }
+
+    /**
+     * 按「某一块的容量/速率贡献变了多少」平移账目，并重新收口。
+     *
+     * <p>组件变化专走的路径：它不改成员集合、不改边长、不改等级掩码，也不改两个上限之和（上限只跟方块有关），
+     * 所以只需把差值加回未收口的和上重新过一次 min——不必重扫结构。
+     *
+     * <p>负差值同样成立（拆下组件），两个和都会被夹到非负。</p>
+     */
+    public StructureStats plusGains(long capacityDelta, long rateDelta) {
+        return of(tier, tierMask, side, Math.max(0L, totalCapacity + capacityDelta),
+                Math.max(0L, summedModuleRate + rateDelta), rateCapSum, inputCapSum);
     }
 
     /**

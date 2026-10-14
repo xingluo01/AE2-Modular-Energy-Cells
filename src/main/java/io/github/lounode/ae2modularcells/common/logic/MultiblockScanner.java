@@ -48,6 +48,18 @@ public final class MultiblockScanner {
     /** 六向的固定数组：{@link Direction#values()} 每次调用都会新建一个数组，而这里是逐块展开的热循环。 */
     private static final Direction[] DIRECTIONS = Direction.values();
 
+    /**
+     * 复用的访问位图与队列。
+     *
+     * <p>原先每次检测都新建它们（562 个 long ≈ 4.5KB、4096 个 int = 16KB，共 ≈ 20KB）。连续放置时一次
+     * 几百次检测就是几 MB 垃圾，而它们全部落在服务端 tick 里。检测只跑在服务端主线程、也不会重入
+     * （{@link #scan} 不调自己），所以两个缓冲可以共用。</p>
+     *
+     * <p>位图每轮都要清：它记的是「本次访问过」，不是「历史上访问过」。</p>
+     */
+    private static final long[] VISITED = new long[(CELLS + 63) >> 6];
+    private static final int[] QUEUE = new int[ModularCellConstants.MAX_BLOCKS];
+
     private MultiblockScanner() {
     }
 
@@ -134,9 +146,10 @@ public final class MultiblockScanner {
             return Result.notFormed("起点不是结构件：" + level.getBlockState(start).getBlock());
         }
 
-        // 访问位图按「相对起点的偏移」索引，窗口固定为 ±REACH。两块定长数组就是这个检测的全部临时对象。
-        long[] visited = new long[(CELLS + 63) >> 6];
-        int[] queue = new int[ModularCellConstants.MAX_BLOCKS];
+        // 复用两个定长缓冲（见 VISITED / QUEUE 的说明）：位图每轮清空，队列不需要清——尾部由 tail 管。
+        long[] visited = VISITED;
+        int[] queue = QUEUE;
+        java.util.Arrays.fill(visited, 0L);
         var cursor = new BlockPos.MutableBlockPos();
 
         int minX = 0;

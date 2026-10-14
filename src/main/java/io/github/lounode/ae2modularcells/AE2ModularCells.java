@@ -5,8 +5,10 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import io.github.lounode.ae2modularcells.api.ModularCellsApi;
+import io.github.lounode.ae2modularcells.common.block.entity.EnergyCellModuleBlockEntity;
 import io.github.lounode.ae2modularcells.common.config.ModularCellConfig;
 
 /**
@@ -36,6 +38,9 @@ public final class AE2ModularCells {
         // 模组构造期与 common setup 那一刻它还没加载——实测那里读值会抛，于是内置清单写不进去、
         // 识别只能靠兜底，用户对文件的修改也变成实际不生效。
         NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class, event -> ModularCellConfig.onServerStarted());
+        // 结构重扫的合并窗口：放置 / 邻居变化只登记待办，tick 末统一扫一次。
+        // 不这么做的话连续放置（建筑手杖放一层、蓝图粘贴）会让每一次放置都全量扫一遍结构。
+        NeoForge.EVENT_BUS.addListener(ServerTickEvent.Post.class, EnergyCellModuleBlockEntity::onServerTick);
         AEModularCellsRegistries.register(modBus);
         // 晚到的等级（目前由 KubeJS 那条路产出）：KubeJS 自己的落盘只认「当前正在注册的注册表」，而自建注册表
         // 晚于 vanilla 那些，所以脚本里 new 出来的等级得由本模组在它自己那一次 RegisterEvent 里补注册。
