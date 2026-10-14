@@ -218,3 +218,14 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
   `TickingRequest getTickingRequest(IGridNode)`、`TickRateModulation tickingRequest(IGridNode, int ticksSinceLast)`；
   `TickingRequest(int minTickRate, int maxTickRate, boolean isSleeping)`（另有 `TickingRequest(TickRates, boolean)` 重载）。
   同一钩子同时是两件事的前置：① 监控器读数推送（核心 tick 里算百分比/流量 → `MonitorBlockEntity#applyReadout` → 变了发包）；② 自发光分档（跨档时更新结构成员的方块状态）。
+- ⬜ **模块拆下来偶尔与别的模块堆不到一起（暂停追查，用户决定暂不计较；已排除的要重查时直接从这看）**
+  - **现象**：用镐挖下或用 AE2 拔手拆下的模块，与其他模块偶尔不可堆叠。两次澄清：「模块」指模块化的能量单元**方块**（不是存储组件）；**未成型的单块模块也会出现**（所以与成型无关）。
+  - **已排除（均经代码取证，别再重走）**：
+    - `EnergyCellModuleBlock.getDrops` 里那次 `applyComponents(exportSettings(DISMANTLE_ITEM))` —— 在 1.21 的 `DataComponentMap.Builder#setUnchecked` 里 `null` 走的是 `map.remove()`；`build()` 对空 map 返回单例 `DataComponentMap.EMPTY`；`PatchedDataComponentMap#setAll` 是 `for (c : components) c.applyTo(this)`，空迭代器不进循环 ⇒ **整个调用是 no-op**（`customName == null` 是常态，所以平时就是一次空转）。
+    - `AEBaseBlockEntity.disassembleWithWrench` 里对本体的**二次** `applyComponents`（`~460-466`）—— 同一份 `EMPTY` ⇒ 同样 no-op（所以它不会绕过我们在 `getDrops` 里做任何守卫）。
+    - `AEBaseEntityBlock.getDrops:264-285`（监控器/空白单元走的这条）同款逻辑 ⇒ 同款 no-op。
+    - 物品注册走 `items.registerSimpleBlockItem(...)`（`ModularCellsApi:148`）⇒ 默认 64 上限，模块物品**本身可堆叠**。
+    - `installComponent`（`1700-1739`）与终端取出（`extractItem` `948-961` / `copyWithCount` / `copy()`）全程**不改组件物品**；全仓 `mapItem` / `setCount` / `grow` / `set(DataComponents...)` 零命中。
+  - **只剩一条没证伪的嫌疑**：`setAll` 内层走 `applyTo → PatchedDataComponentMap#set(...)`，而 `set` 会对「当前值 ≠ prototype 值」的组件写入 patch（`patch.put(type, Optional.ofNullable(v))`）——`EMPTY` 本身不触发，但如果**掉落物**当前组件与它自己的 prototype 不一致就会落进 patch。这取决于 `BlockItem` 的默认组件（例如 `BLOCK_ENTITY_DATA`），没实测无法定论。
+  - **一次实机即可定音（二选一）**：① 开 **F3+H**，把「摆下来再挖回来的模块」与「从创造栏/合成台拿的模块」并排悬停，对比组件列表（重点看 `BLOCK_ENTITY_DATA` / `custom_name`）；② 临时在 `getDrops` 末尾打一行 `drop.getComponents().equals(new ItemStack(asItem()).getComponents())` 与命中的破坏路径，跑一次即知。
+  - **参考**：本项目之前把「掉落物带自定义名 ⇒ 不可堆叠」当成根因（基于 AE2 `exportSettings` 无条件 `builder.set(CUSTOM_NAME, customName)`）——**该推断已被上述字节码/源码取证推翻**，别再照着它改。
