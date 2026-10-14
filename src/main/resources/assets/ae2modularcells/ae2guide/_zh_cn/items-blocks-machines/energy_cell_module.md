@@ -28,6 +28,11 @@ categories:
 
 ## 拼成结构
 
+<GameScene zoom="6" background="transparent">
+  <ImportStructure src="../../assets/assemblies/module_cube_3x3x3.snbt" />
+  <IsometricCamera yaw="195" pitch="30" />
+</GameScene>
+
 紧挨着摆成实心立方体，边长 3×3×3 起步，最大 16×16×16。等级可以混拼：每块按自己那一档的容量与传输速率计账，速率和输入的上限也是逐块相加，不是取某一档的固定值。
 
 拼好之后，整个结构作为一份能量存储工作，一份账目、一条通道，任意一面都能接到 ME 网络上。

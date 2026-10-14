@@ -28,6 +28,11 @@ Modular energy units store ME energy. There are three tiers:
 
 ## Forming a structure
 
+<GameScene zoom="6" background="transparent">
+  <ImportStructure src="../assets/assemblies/module_cube_3x3x3.snbt" />
+  <IsometricCamera yaw="195" pitch="30" />
+</GameScene>
+
 Place modules next to each other to build a solid cube, from 3×3×3 up to 16×16×16. Tiers can be mixed: every block contributes its own tier's capacity and transfer rate, and the rate and input caps are summed per block as well, not taken from a single tier.
 
 Once formed, the cube works as one energy storage: one account, one channel, connectable on any face.

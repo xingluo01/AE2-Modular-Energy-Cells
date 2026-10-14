@@ -13,6 +13,11 @@ categories:
 
 # 监控器
 
+<Row>
+  <BlockImage id="energy_monitor" scale="4" />
+  <BlockImage id="flow_monitor" scale="4" />
+</Row>
+
 两台只显示、不产出的面板。拼进立方体时它们算结构件：参与成型判定，但不增加容量或速率，所以拼进去既不会破坏结构，也不会让读数虚高。
 
 监控器只是结构件，不持有结构的账目，所以一个结构里至少要有一块模块——清一色监控器不算成型。核心由模块担任，不必挑位置：布局序里的第一块模块就是它。
@@ -28,6 +33,11 @@ categories:
 瞬时输入速率不上正面。它逐 tick 抖，方块正面又小，挤两行反而看不清「这东西在以多大功率进食」。想看瞬时值，去管理终端。
 
 ## 成型前后
+
+<GameScene zoom="6" background="transparent">
+  <ImportStructure src="../../assets/assemblies/monitors_in_structure.snbt" />
+  <IsometricCamera yaw="195" pitch="30" />
+</GameScene>
 
 未成型时它就是一台独立的监控器：正面是它自己的面板，五个侧面是整块素面，不带边框。那时它还没接进任何结构，没有可监控的对象。
 

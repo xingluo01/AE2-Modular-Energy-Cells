@@ -13,6 +13,11 @@ categories:
 
 # Monitors
 
+<Row>
+  <BlockImage id="energy_monitor" scale="4" />
+  <BlockImage id="flow_monitor" scale="4" />
+</Row>
+
 Two display-only panels. Placed inside a cube they count as structure parts: they take part in forming the structure but add nothing to capacity or transfer rate, so adding one breaks no structure and inflates no reading.
 
 A monitor is a structure part and nothing else, so it holds no account of its own. A structure therefore needs at least one module: a cube of nothing but monitors never forms. Any module can be the core, which is simply the first one in layout order, so you never have to reserve a corner for it.
@@ -28,6 +33,11 @@ An FE icon sits in the middle of the face, with the readout along the bottom edg
 Instantaneous input rate stays off the face. It changes every tick and the face is small, so a second line would only crowd it. For the live number, open the terminal.
 
 ## Before and after forming
+
+<GameScene zoom="6" background="transparent">
+  <ImportStructure src="../assets/assemblies/monitors_in_structure.snbt" />
+  <IsometricCamera yaw="195" pitch="30" />
+</GameScene>
 
 While unformed it is a monitor standing on its own: the face shows its own panel, and the other five sides stay plain, with no edge rings. There is no structure to report on yet.
 

@@ -386,6 +386,10 @@ vanilla 注册表早于本模组的自建注册表（**实测成立，不是契�
 - 判断口径：凡「外部 API 会拿去改」的集合，一律给可变实现（`Collections.synchronizedList(new ArrayList<>())` 这种才是对的写法）。同样口径适用于交给配置存储的列表（见 `ModularCellConfig`）。
 - **注意方向**：上述说的是「**我们交出去**」的集合。反方向（**框架交给我们**、我们往里 add，例如 `ItemTooltipEvent#getToolTip()`）不需要我们操心——那是框架自己保证的，别因为这条去给别人的列表包装一层。
 
+**指南里的资源路径按页相对解析**
+
+- `<ImportStructure src="...">` 与 Markdown 图片的路径都是**相对当前页**的。页在 `ae2guide/` 根下就写 `assets/assemblies/x.snbt`；页在 `items-blocks-machines/` 这类子目录下要写 `../assets/assemblies/x.snbt`，而中文页在 `_zh_cn/` 下再深一层，写 `../../…`。路径写错不会报错，只是那个场景静静地渲染不出来（AE2 自己的语料里子目录页的 `src` 全是 `../`，零例外）。
+
 **数值集中**
 
 - 容量、速率、槽位数、组件折扣（k / kv）与数量加成（b / bv）、输入比例 f_in、速率与输入上限只在 `EnergyCellTier` / `StorageComponentTier` / `ModularCellConstants` 里定义；公式只在 `common/logic/CellMath` 实现一次。别的地方写第二份就是给未来的平衡改动埋雷。
