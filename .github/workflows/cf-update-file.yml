@@ -1,0 +1,215 @@
+name: Update CurseForge file
+
+# 手工触发的维护动作：调整**已上传**的 CurseForge 文件的元数据（依赖关系 / 发布类型 / 显示名 / 更新日志 /
+# 游戏版本）。上传本身仍由 release.yml 负责，这个工作流只用于发布后的修正。
+#
+# 用的是旧版 Upload API 的 Project File Management API：
+#   POST https://minecraft.curseforge.com/api/projects/{projectId}/update-file
+#   multipart/form-data，只带一个字段 metadata（JSON 字符串），认证走 X-Api-Token 头。
+# 出处：CurseForge 官方支持文档《CurseForge Upload API》的 "Project File Management API" 一节
+#   https://support.curseforge.com/support/solutions/articles/9000197321-curseforge-upload-api
+# 注意边界：新版 v1（Eternal，api.curseforge.com）的 file.dependencies 只有只读字段，没有写接口；
+# 项目页的 Summary / Description 两边都没有写接口（CF-I-6366），只能人工在站点粘贴。
+#
+# 需要的仓库配置与 release.yml 相同：
+#   Secrets   CURSEFORGE_TOKEN        旧版 API 令牌（与上传同一个）
+#   Variables CURSEFORGE_PROJECT_ID   数字项目 id
+#
+# 参数（全在 workflow_dispatch 里给）：
+#   file_id       必填；CF 站点该文件页 URL 末尾的数字
+#   dry_run       默认 true：只打印将要发送的 metadata，不真的调用接口。确认无误后改成 false 再跑一次
+#   relations     逗号分隔的 slug:类型，例如 applied-energistics-2:requiredDependency,guideme:requiredDependency
+#                 类型只能是 embeddedLibrary / incompatible / optionalDependency / requiredDependency / tool
+#   release_type  alpha / beta / release
+#   display_name  文件显示名
+#   changelog     更新日志正文（按 markdown 发送）
+#   game_versions 逗号分隔的版本 id（如 11779,10150,9638,9639）
+#
+# 只给 file_id、其余留空会被本工作流拦下——官方接口在没有任何字段要改时也会失败。
+on:
+  workflow_dispatch:
+    inputs:
+      file_id:
+        description: '要修改的 CF 文件 id（文件页 URL 末尾的数字）'
+        required: true
+        type: string
+      dry_run:
+        description: 'true = 只打印 metadata 不实际调用（先跑一次确认）'
+        required: true
+        default: true
+        type: boolean
+      relations:
+        description: '依赖关系，逗号分隔 slug:类型；留空=不改'
+        required: false
+        default: ''
+        type: string
+      release_type:
+        description: 'alpha / beta / release；留空=不改'
+        required: false
+        default: ''
+        type: string
+      display_name:
+        description: '文件显示名；留空=不改'
+        required: false
+        default: ''
+        type: string
+      changelog:
+        description: '更新日志正文（markdown）；留空=不改'
+        required: false
+        default: ''
+        type: string
+      game_versions:
+        description: '游戏版本 id，逗号分隔（如 11779,10150,9638,9639）；留空=不改'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build metadata and (optionally) call update-file
+        env:
+          CF_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          FILE_ID: ${{ inputs.file_id }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          IN_RELATIONS: ${{ inputs.relations }}
+          IN_RELEASE_TYPE: ${{ inputs.release_type }}
+          IN_DISPLAY_NAME: ${{ inputs.display_name }}
+          IN_CHANGELOG: ${{ inputs.changelog }}
+          IN_GAME_VERSIONS: ${{ inputs.game_versions }}
+        run: |
+          set -euo pipefail
+
+          # ---- 前置检查 ----
+          if [ -z "${CF_TOKEN:-}" ]; then
+            echo "::error title=缺少令牌::Secrets 里没有 CURSEFORGE_TOKEN，先在仓库 Settings → Secrets and variables → Actions 配好。"
+            exit 1
+          fi
+          # 先做输入归一化：从站点 URL / 聊天里拷过来的值常带首尾空白，不过手就会被当成不合法，
+          # 或者在后面被静默截断（例如「11779, 10150」）。
+          # changelog 不动——它是正文，空格与换行有意义；display_name 只判定「是否全空白」。
+          FILE_ID=$(printf '%s' "${FILE_ID:-}" | tr -d '[:space:]')
+          PROJECT_ID=$(printf '%s' "${PROJECT_ID:-}" | tr -d '[:space:]')
+          IN_RELATIONS=$(printf '%s' "${IN_RELATIONS:-}" | tr -d '[:space:]')
+          IN_RELEASE_TYPE=$(printf '%s' "${IN_RELEASE_TYPE:-}" | tr -d '[:space:]')
+          IN_GAME_VERSIONS=$(printf '%s' "${IN_GAME_VERSIONS:-}" | tr -d '[:space:]')
+          if ! printf '%s' "${IN_DISPLAY_NAME:-}" | grep -q '[^[:space:]]'; then IN_DISPLAY_NAME=''; fi
+          if ! printf '%s' "${IN_CHANGELOG:-}" | grep -q '[^[:space:]]'; then IN_CHANGELOG=''; fi
+
+          if ! printf '%s' "${PROJECT_ID:-}" | grep -qE '^[0-9]+$'; then
+            echo "::error title=项目 id 不合法::CURSEFORGE_PROJECT_ID 必须是数字（当前值：「${PROJECT_ID:-}」）；slug 与项目名都不行。"
+            exit 1
+          fi
+          if ! printf '%s' "${FILE_ID:-}" | grep -qE '^[0-9]+$'; then
+            echo "::error title=file_id 不合法::file_id 必须是数字（当前值：「${FILE_ID:-}」）。它不是文件里的版本号，是站点文件页 URL 末尾那个数字。"
+            exit 1
+          fi
+
+          # ---- 组装 relations（slug:类型 → {projects:[{slug,type}]}）----
+          # 类型先逐个校验：接口对拼错的类型只会回一个含义不明的错误，在这里挡下来更好定位。
+          REL_JSON='null'
+          if [ -n "${IN_RELATIONS:-}" ]; then
+            bad=0
+            while IFS= read -r entry; do
+              [ -z "$entry" ] && continue
+              slug=${entry%%:*}
+              type=${entry#*:}
+              case "$type" in
+                embeddedLibrary|incompatible|optionalDependency|requiredDependency|tool) ;;
+                *) echo "::error title=关系类型不合法::「$entry」里的类型「$type」不合法（只能是 embeddedLibrary / incompatible / optionalDependency / requiredDependency / tool，且必须写成 slug:类型）。"; bad=1 ;;
+              esac
+              # slug 也要校验：拼错的项目 slug 会原样发出去，CF 只会静默地不挂这条关系（或挂到同名项目上）。
+              # 字符集按 CF 项目 URL 里 slug 的形态取（小写字母/数字/点/下划线/连字符）；若哪天遇到含大写的 slug，
+              # 把这条正则放宽即可——接口在 slug 之外还接受数字 projectID，真需要时再加一栏。
+              if ! printf '%s' "$slug" | grep -qE '^[a-z0-9][a-z0-9._-]*$'; then
+                echo "::error title=关系 slug 不合法::「$entry」里的 slug「$slug」不像 CF 的项目 slug（它只在项目 URL 末段，形如 applied-energistics-2）。"; bad=1
+              fi
+            done <<< "$(printf '%s' "$IN_RELATIONS" | tr ',' '\n')"
+            [ "$bad" -eq 0 ] || exit 1
+            REL_JSON=$(printf '%s' "$IN_RELATIONS" | tr ',' '\n' | awk -F: 'NF>=2 {printf "{\"slug\":\"%s\",\"type\":\"%s\"}\n", $1, $2}' | jq -s '{projects: .}')
+          fi
+
+          # ---- 组装 metadata ----
+          # jq 负责转义：changelog 里可能有引号、换行、反斜杠，手工拼串会拼坏。
+          META=$(jq -n --argjson fileId "$FILE_ID" '{fileID: $fileId}')
+          if [ "$REL_JSON" != 'null' ]; then
+            META=$(jq --argjson r "$REL_JSON" '. + {relations: $r}' <<< "$META")
+          fi
+          if [ -n "${IN_RELEASE_TYPE:-}" ]; then
+            case "$IN_RELEASE_TYPE" in
+              alpha|beta|release) ;;
+              *) echo "::error title=release_type 不合法::只能是 alpha / beta / release，当前是「$IN_RELEASE_TYPE」。"; exit 1 ;;
+            esac
+            META=$(jq --arg v "$IN_RELEASE_TYPE" '. + {releaseType: $v}' <<< "$META")
+          fi
+          if [ -n "${IN_DISPLAY_NAME:-}" ]; then
+            META=$(jq --arg v "$IN_DISPLAY_NAME" '. + {displayName: $v}' <<< "$META")
+          fi
+          if [ -n "${IN_CHANGELOG:-}" ]; then
+            META=$(jq --arg v "$IN_CHANGELOG" '. + {changelog: $v, changelogType: "markdown"}' <<< "$META")
+          fi
+          if [ -n "${IN_GAME_VERSIONS:-}" ]; then
+            # 逐个 token 校验，不用 grep 过滤：过滤会把「11779,NeoForge」静默降级成只剩一个版本，
+            # 站点上就少一个标签，而且没人会知道。
+            GVS_TOKENS=$(printf '%s' "$IN_GAME_VERSIONS" | tr ',' '\n')
+            while IFS= read -r tok; do
+              [ -z "$tok" ] && continue
+              if ! printf '%s' "$tok" | grep -qE '^[0-9]+$'; then
+                echo "::error title=game_versions 不合法::「$tok」不是数字 id。这一栏只收数字（如 11779,10150,9638,9639）；版本名与 loader 名不在这里传。"
+                exit 1
+              fi
+            done <<< "$GVS_TOKENS"
+            GVS=$(printf '%s' "$GVS_TOKENS" | grep -E '^[0-9]+$' | jq -s 'map(tonumber)')
+            META=$(jq --argjson v "$GVS" '. + {gameVersions: $v}' <<< "$META")
+          fi
+
+          # 只给了 fileID 等于没东西要改：官方接口对空改动也会失败，提前拦。
+          if [ "$(jq 'keys | length' <<< "$META")" -lt 2 ]; then
+            echo "::error title=没有要改的字段::除了 file_id 至少要填一项（relations / release_type / display_name / changelog / game_versions）。"
+            exit 1
+          fi
+
+          # 先压成单行再用：日志好读，也避免多行值进 multipart 字段（前面两个 jq 构造步骤出来的是 pretty 多行）。
+          META=$(jq -c . <<< "$META")
+          echo "将要发送的 metadata："
+          echo "$META"
+          if [ "$REL_JSON" != 'null' ]; then
+            echo "本次把该文件的依赖设为 $(jq '.projects | length' <<< "$REL_JSON") 条（重设而不是追加）：漏写就会把原有的关系覆盖掉，照 docs/RELEASE.md §二 那张表写全。"
+          fi
+
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "::notice title=干跑::dry_run=true，没有调用接口。核对上面的 metadata，确认无误后把 dry_run 改成 false 再跑一次。"
+            exit 0
+          fi
+
+          # ---- 实际调用 ----
+          # 接口是 multipart/form-data，只带一个名为 metadata 的字段；认证走 X-Api-Token 头。
+          status=$(curl -sS --retry 3 --retry-delay 5 --max-time 60 \
+            -o /tmp/cf_resp -w '%{http_code}' \
+            -X POST \
+            -H "X-Api-Token: $CF_TOKEN" \
+            -F "metadata=$META" \
+            "https://minecraft.curseforge.com/api/projects/$PROJECT_ID/update-file" || true)
+          echo "POST /api/projects/$PROJECT_ID/update-file → HTTP ${status:-（无）}"
+          if [ -z "$status" ]; then
+            echo "::error title=请求没发出去::curl 没拿到 HTTP 状态码（DNS/网络不通或超时）。换到 Actions 上跑，或换网络后重试。"
+            exit 1
+          fi
+          # 回包只截前 800 字节：被 Cloudflare 拦下来时回的是整页挑战页 HTML，全量打印会把日志刷成几十 KB。
+          [ -f /tmp/cf_resp ] && { head -c 800 /tmp/cf_resp; echo; }
+
+          if [ "$status" != "200" ]; then
+            # 先认挑战页：它和「令牌/参数不对」的 403 长得像，但修法完全不同（换运行位置，而不是改参数）。
+            if grep -qiE 'cf_chl|Just a moment|Enable JavaScript and cookies' /tmp/cf_resp 2>/dev/null; then
+              echo "::error title=被 Cloudflare 拦截::HTTP $status，回包是挑战页而不是 CF 的错误 JSON。从某些网络（含本机直连）调这条接口会被挡，与令牌、fileID、metadata 无关——到 GitHub Actions 上跑（runner 一般不被拦），或换网络/走代理重试。"
+              exit 1
+            fi
+            echo "::error title=更新失败::HTTP $status。常见原因：fileID 不属于该项目、项目 id 配错、令牌无效或过期、metadata 里有接口不接受的字段组合。"
+            exit 1
+          fi
+          echo "::notice title=已更新::文件 $FILE_ID 的元数据已提交。到站点文件页复核依赖关系与版本标签；若该文件仍在首次人工审核阶段，依赖关系要等审核通过后才对玩家可见。"

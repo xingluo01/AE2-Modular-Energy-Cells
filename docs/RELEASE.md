@@ -10,8 +10,9 @@
 | 构建 jar | GitHub Actions | `./gradlew build -Pmod_version=<tag 去掉 v>` |
 | 上传文件（jar + changelog + 依赖关系 + 游戏版本） | GitHub Actions | tag `v*` 触发 |
 | GitHub Release | GitHub Actions | 与 CF 同一份 changelog |
+| 发布后修正**文件级**元数据（依赖 / 发布类型 / 显示名 / 日志 / 游戏版本） | GitHub Actions（**手工触发**） | 见 §七 |
 | 项目页摘要 / 正文 / 分类 / 图标 | **人工** | 站点上操作，正文直接粘贴 `docs/PLATFORM.md` 全文 |
-| 发布前自检 | 人工 | 见 §七 |
+| 发布前自检 | 人工 | 见 §八 |
 
 ## 二、项目页设置（一次性，站点手工）
 
@@ -86,7 +87,24 @@ CF 项目必须**先在站点人工创建**（自动化只能往已有项目传�
 - **同一个 tag 重跑会怎样**：CF 不去重，会**再传一份重复文件**。所以发布中断时优先**改版本号重发**，不要直接重跑 workflow。删文件只能在站点手工操作。
 - **Modrinth 未接入**：那边要 `minotaur` 插件 + `MODRINTH_PROJECT_ID` + PAT，项目描述的同步还得另配一个 workflow（姊妹项目 AE2 Pattern Disk 的 `.github/workflows/sync-project-pages.yml` 是现成样板，用 `PATCH /v2/project` 把 `docs/PLATFORM.md` 推上去）。本仓还没做，要做时照它抄。
 
-## 七、发布前自检
+## 七、发布后修正已上传的文件
+
+上传之后要改**文件级**元数据（依赖关系、发布类型、显示名、更新日志、游戏版本），用 `.github/workflows/cf-update-file.yml`（仅 `workflow_dispatch`，手工触发）：
+
+1. Actions → **Update CurseForge file** → Run workflow。
+2. `file_id` 填 CF 文件页 URL 末尾的数字（**不是**版本号）；`dry_run` 保持默认的 `true` 先跑一次，核对日志里打印的 metadata。
+3. 确认无误后只把 `dry_run` 改成 `false` 再跑一次：`relations` 写 `slug:类型` 逗号分隔（与 `release.yml` 的写法一致），`game_versions` 写数字 id 逗号分隔。
+
+两条注意：
+
+- **除 `file_id` 外至少要给一项字段**，只填 `file_id` 会被工作流拦下（官方接口对空改动也失败）。
+- 给 `relations` 等于**重设这个文件的依赖集合**，不是追加——接口只有「设置」语义，没有增量与删除端点。改依赖时请照 §二 那张表把三个必需依赖（`applied-energistics-2` / `guideme` / `mezzconfig`）写全，否则没写的那几条会被抹掉。工作流会把将要发送的 metadata 与「依赖设为 N 条」先打印出来供核对。
+
+依据是 CF 官方《CurseForge Upload API》的 Project File Management API（`POST /api/projects/{projectId}/update-file`，multipart 只带 `metadata` 字段），认证用与上传同一个令牌。**新版 v1（Eternal）API 的 `file.dependencies` 只有只读字段、没有写接口**；项目页的 Summary / Description 两边都写不了（CF-I-6366），只能人工粘贴。
+
+从本机直连这条接口可能被 Cloudflare 挑战页挡下（实测 403 + `Just a moment...`），所以走 Actions：runner 上一般不被拦。工作流会认出挑战页并给出对应提示，而不是把它报成「令牌不对」。
+
+## 八、发布前自检
 
 - [ ] `mod_version` 与要打的 tag 一致；`CHANGELOG.md` 的段落日期填了当天。
 - [ ] `mods.toml` 的两个 `version_range` 仍覆盖目标环境（`minecraft_version_range` / `neo_version_range`）。
