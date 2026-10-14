@@ -12,6 +12,6 @@ categories:
 
 # Blank Energy Unit
 
-The crafting intermediate for all three module tiers.
+The crafting intermediate for all three module tiers. It stores nothing, never forms, and does not connect to the ME network.
 
-It stores nothing, never forms, and does not connect to the ME network. Structures only recognize module blocks, so one placed in a cube does not count as a structure part.
+Structures only recognize module blocks, so you cannot use one as a structure part. Take it to a crafting grid.

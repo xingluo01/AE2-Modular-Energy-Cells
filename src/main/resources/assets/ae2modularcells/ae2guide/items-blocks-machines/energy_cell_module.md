@@ -20,7 +20,7 @@ categories:
   <ItemImage id="superdense_energy_cell_module" scale="4" />
 </Row>
 
-Modules that store ME energy. Three tiers, increasing in both capacity and slot count:
+Modules that store ME energy. Three tiers, each with more capacity and more component slots than the last:
 
 * **Basic**: 200 kAE, 1 component slot
 * **Dense**: 1.6 MAE, 2 slots
@@ -33,30 +33,30 @@ Modules that store ME energy. Three tiers, increasing in both capacity and slot 
   <IsometricCamera yaw="195" pitch="30" />
 </GameScene>
 
-Placed solid into a cube the structure forms, from 3×3×3 up to 16×16×16, with tiers mixed freely. Capacity, transfer rate and input cap are each computed per block and summed: every block contributes the values of its tier.
+Place modules against each other to build a solid cube, from 3×3×3 up to 16×16×16. You can mix tiers. Every block contributes the capacity, transfer rate and input cap of its own tier, and the structure sums them.
 
-Formed, the structure serves as a single energy storage, connectable on any face.
+Once formed, the cube is one energy storage. Connect it to your ME network on any face of a module block.
 
-An unformed block or cluster is not a structure: it stores AE, but only through FE, and the ME network can neither connect to it nor draw from it. On forming, energy already held by the blocks joins the structure. See the [Gain Algorithm](../gain-algorithm.md) for the formulas.
+A lone module, or a cluster that never forms a cube, is not a structure. It still stores AE, but only through FE — your ME network can neither connect to it nor draw from it. When the cube forms, whatever the blocks already hold joins the structure. See the [Gain Algorithm](../gain-algorithm.md) for the formulas.
 
 ## Component slots
 
-Each block carries its own slots, so a structure's total slot count is the sum over its blocks. Insert **storage components** to raise capacity and transfer rate:
+Each module carries its own slots, so the structure's total is the sum over its blocks. Insert **storage components** to raise capacity and transfer rate:
 
 * AE2's 1k to 256k
 * MEGA Cells' 1m to 256m
 * AppFlux's core_1k to 256m
 
-The terminal groups by tier: one row of 12 slots per tier, **one component type per slot**, with the same type counted within its slot and a full row spilling into the next. The slot chosen makes no difference; new components are distributed across the free slots of that tier's blocks. Capacity is counted per block and summed over the structure, and a full slot set adds a count bonus. Components are saved with the block they sit in.
+The terminal groups them by tier: 12 slots per tier, one component type per slot. The same type stacks in its slot and shows a count, and a full row spills into the next one. Which slot you use makes no difference — new components go to the free slots of that tier. Capacity is counted per block and summed, and filling every slot adds a count bonus. Components you insert stay with the block they sit in.
 
 ## Energy module terminal
 
 Right-click a **formed** structure to open the terminal.
 
-It groups by tier: each group has a title row (tier icon, module count, `Components installed: a/b`) followed by that tier's component rows. Right-click a title icon to select the group; quick-move then only fills that group.
+The terminal groups by tier. Each group has a title row with the tier icon, the module count and `Components installed: a/b`, followed by that tier's component rows. Right-click a title icon to select the group — quick-move then only fills that group.
 
 The three buttons on the left:
 
 * open this guide
-* switch terminal style (small / medium / tall / full; how many rows the panel shows)
+* switch the terminal style (small / medium / tall / full)
 * cycle the number display: letter (`12.3M`), scientific (`1.23E7`), engineering (`12.3E6`)

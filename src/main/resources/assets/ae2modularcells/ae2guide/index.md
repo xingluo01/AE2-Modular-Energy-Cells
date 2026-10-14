@@ -7,9 +7,9 @@ navigation:
 
 # AE2 Modular Energy Units
 
-An Applied Energistics 2 add-on that turns energy cells into modular blocks.
+An Applied Energistics 2 add-on. It turns energy cells into modular blocks you can stack into a solid cube.
 
-Placed solid into a cube (3×3×3 up to 16×16×16, tiers may be mixed), the structure serves as one energy storage on the ME network and can be connected on any face.
+Stack them solid into a cube — 3×3×3 up to 16×16×16, tiers may be mixed — and the structure acts as one energy storage on your ME network. Connect it on any face of a module block.
 
 ## Contents
 
