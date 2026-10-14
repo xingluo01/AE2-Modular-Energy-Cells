@@ -384,6 +384,7 @@ vanilla 注册表早于本模组的自建注册表（**实测成立，不是契�
 
 - 覆写 `getDrops` 时要返回 `ArrayList` 之类的**可变**列表，不要返回 `List.of(...)` / `List.copyOf(...)`。AE2 的扳手拆解（`AEBaseBlockEntity#disassembleWithWrench`）会把这份返回值原样交给 `addAdditionalDrops`，而那里执行的是 `drops.add(stack)` 往列表里追加方块实体库存。不可变列表一追加就抛 `UnsupportedOperationException`，而它在 `removeBlock` 之前——症状是「方块拆不掉」，且**只有库存里真的有东西时才复现**（空库存时那个 `add` 根本不会被调到，于是看起来一切正常）。
 - 判断口径：凡「外部 API 会拿去改」的集合，一律给可变实现（`Collections.synchronizedList(new ArrayList<>())` 这种才是对的写法）。同样口径适用于交给配置存储的列表（见 `ModularCellConfig`）。
+- **注意方向**：上述说的是「**我们交出去**」的集合。反方向（**框架交给我们**、我们往里 add，例如 `ItemTooltipEvent#getToolTip()`）不需要我们操心——那是框架自己保证的，别因为这条去给别人的列表包装一层。
 
 **数值集中**
 

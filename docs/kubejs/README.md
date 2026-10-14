@@ -52,6 +52,8 @@ KubeJS 要双端都装。只在服务端注册的等级，客户端解不出那�
 边框那五张（`ring_corner`、`ring_side_hor`、`ring_side_ver`、`energy_cell_light_base`、`unit`）是共享件，模型 JSON 里引用本模组的即可，不用自己造。
 
 掉落不用管：方块本体与里面的组件都由模组自己给。
+
+物品 tooltip 也不用管：**基础储能 / 基础输入速率上限 / 存储组件槽**三行由模组按「五个数值」里的 `capacity` / `maxInputRate` / `componentSlots` 现推，数值改了它跟着变，不需要自己写语言键或接事件。
 ## 装进整合包
 
 把 [`examples/industrial/kubejs/`](examples/industrial/kubejs/) 整个拷进整合包根目录，进游戏就能用。它已经铺成整合包形态，贴图也带了。这一套不发配方，只能创造模式拿。

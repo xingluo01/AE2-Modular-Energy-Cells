@@ -26,6 +26,8 @@ Modular energy units store ME energy. There are three tiers:
 * **Dense**: 1.6 MAE, 2 slots
 * **Superdense**: 12.8 MAE, 3 slots
 
+The item tooltip lists that tier's base storage, base input rate cap, and component slot count, shown in the current notation (switchable in the terminal).
+
 ## Forming a structure
 
 Place modules next to each other to build a solid cube, from 3×3×3 up to 16×16×16. Tiers can be mixed: every block contributes its own tier's capacity and transfer rate, and the rate and input caps are summed per block as well, not taken from a single tier.
