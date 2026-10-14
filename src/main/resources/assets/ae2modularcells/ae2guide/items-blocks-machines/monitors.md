@@ -34,10 +34,10 @@ Instantaneous input rate stays off the face. It changes every tick and the face 
 
 ## Before and after forming
 
-<GameScene zoom="6" background="transparent">
-  <ImportStructure src="../assets/assemblies/monitors_in_structure.snbt" />
-  <IsometricCamera yaw="195" pitch="30" />
-</GameScene>
+<Row>
+  <BlockImage id="energy_monitor" scale="4" p:formed="true" />
+  <BlockImage id="flow_monitor" scale="4" p:formed="true" />
+</Row>
 
 While unformed it is a monitor standing on its own: the face shows its own panel, and the other five sides stay plain, with no edge rings. There is no structure to report on yet.
 

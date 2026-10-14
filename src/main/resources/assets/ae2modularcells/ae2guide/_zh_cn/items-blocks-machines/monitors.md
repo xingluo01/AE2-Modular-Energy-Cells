@@ -34,10 +34,10 @@ categories:
 
 ## 成型前后
 
-<GameScene zoom="6" background="transparent">
-  <ImportStructure src="../assets/assemblies/monitors_in_structure.snbt" />
-  <IsometricCamera yaw="195" pitch="30" />
-</GameScene>
+<Row>
+  <BlockImage id="energy_monitor" scale="4" p:formed="true" />
+  <BlockImage id="flow_monitor" scale="4" p:formed="true" />
+</Row>
 
 未成型时它就是一台独立的监控器：正面是它自己的面板，五个侧面是整块素面，不带边框。那时它还没接进任何结构，没有可监控的对象。
 

@@ -28,7 +28,7 @@ Modular energy units store ME energy. There are three tiers:
 
 ## Forming a structure
 
-<GameScene zoom="6" background="transparent">
+<GameScene zoom="3" background="transparent">
   <ImportStructure src="../assets/assemblies/module_cube_3x3x3.snbt" />
   <IsometricCamera yaw="195" pitch="30" />
 </GameScene>
