@@ -7,13 +7,13 @@ navigation:
 
 # AE2 Modular Energy Units
 
-An Applied Energistics 2 add-on.
+An Applied Energistics 2 add-on that turns energy cells into modular blocks.
 
-It turns energy cells into modular blocks. Snap them together into a solid cube, mixing tiers freely, and the whole cube acts as one energy storage on your ME network. Connect it on any face.
+Placed solid into a cube (3×3×3 up to 16×16×16, tiers may be mixed), the structure serves as one energy storage on the ME network and can be connected on any face.
 
 ## Contents
 
-* [Modular Energy Unit](items-blocks-machines/energy_cell_module.md): the three tiers, the component slots and the energy module terminal.
-* [Monitors](items-blocks-machines/monitors.md): the panels that report stored energy and flow.
-* [Gain Algorithm](gain-algorithm.md): the formulas, their parameters, and the numbers when full.
+* [Modular Energy Unit](items-blocks-machines/energy_cell_module.md): the three tiers, component slots and the energy module terminal.
+* [Monitors](items-blocks-machines/monitors.md): panels reporting stored energy and flow.
+* [Gain Algorithm](gain-algorithm.md): formulas, parameters and full-build figures.
 * [Blank Energy Unit](items-blocks-machines/blank_energy_unit.md): the crafting intermediate.

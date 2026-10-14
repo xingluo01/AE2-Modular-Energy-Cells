@@ -20,7 +20,7 @@ categories:
   <ItemImage id="superdense_energy_cell_module" scale="4" />
 </Row>
 
-Modular energy units store ME energy. There are three tiers:
+Modules that store ME energy. Three tiers, increasing in both capacity and slot count:
 
 * **Basic**: 200 kAE, 1 component slot
 * **Dense**: 1.6 MAE, 2 slots
@@ -33,30 +33,30 @@ Modular energy units store ME energy. There are three tiers:
   <IsometricCamera yaw="195" pitch="30" />
 </GameScene>
 
-Place modules next to each other to build a solid cube, from 3×3×3 up to 16×16×16. Tiers can be mixed: every block contributes its own tier's capacity and transfer rate, and the rate and input caps are summed per block as well, not taken from a single tier.
+Placed solid into a cube the structure forms, from 3×3×3 up to 16×16×16, with tiers mixed freely. Capacity, transfer rate and input cap are each computed per block and summed: every block contributes the values of its tier.
 
-Once formed, the cube works as one energy storage: one account, one channel, connectable on any face.
+Formed, the structure serves as a single energy storage, connectable on any face.
 
-A single module, or a pile that never forms a cube, is not a structure. It still stores AE, but that energy belongs to it alone: FE can charge it, while the ME network can neither connect to it nor draw from it. The moment a cube forms, every module's stored energy flows into one pool. See the [Gain Algorithm](../gain-algorithm.md) for the numbers.
+An unformed block or cluster is not a structure: it stores AE, but only through FE, and the ME network can neither connect to it nor draw from it. On forming, energy already held by the blocks joins the structure. See the [Gain Algorithm](../gain-algorithm.md) for the formulas.
 
 ## Component slots
 
-Every module carries its own component slots, so a structure's total slot count is the sum over its blocks. Insert **storage components** to raise capacity and transfer rate:
+Each block carries its own slots, so a structure's total slot count is the sum over its blocks. Insert **storage components** to raise capacity and transfer rate:
 
 * AE2's 1k to 256k
 * MEGA Cells' 1m to 256m
 * AppFlux's core_1k to 256m
 
-The terminal does not show them per block: each tier shares one row of 12 slots, **one component type per slot** (the same type stacks, and the slot shows the count; a full row spills into another row below). Which slot you drop it into does not matter - the system spreads new components across the blocks of that tier itself. Components are counted per block and summed over the whole structure, and filling every slot adds a count bonus. They are saved with the module they sit in.
+The terminal groups by tier: one row of 12 slots per tier, **one component type per slot**, with the same type counted within its slot and a full row spilling into the next. The slot chosen makes no difference; new components are distributed across the free slots of that tier's blocks. Capacity is counted per block and summed over the structure, and a full slot set adds a count bonus. Components are saved with the block they sit in.
 
 ## Energy module terminal
 
 Right-click a **formed** structure to open the terminal.
 
-It groups by tier: each group has a title row (tier icon, module count, and `components installed: a/b`) followed by that tier's component rows. Right-click a title icon to select that group, after which quick-move only puts components there.
+It groups by tier: each group has a title row (tier icon, module count, `Components installed: a/b`) followed by that tier's component rows. Right-click a title icon to select the group; quick-move then only fills that group.
 
 The three buttons on the left:
 
 * open this guide
-* switch the terminal style (small / medium / tall / full — how many rows the panel shows)
-* cycle the number display between letter (`12.3M`), scientific (`1.23E7`) and engineering (`12.3E6`)
+* switch terminal style (small / medium / tall / full; how many rows the panel shows)
+* cycle the number display: letter (`12.3M`), scientific (`1.23E7`), engineering (`12.3E6`)

@@ -12,6 +12,6 @@ categories:
 
 # Blank Energy Unit
 
-A casing waiting for work: the crafting intermediate for all three module tiers.
+The crafting intermediate for all three module tiers.
 
-It stores nothing, never forms, and does not connect to the ME network. Putting one inside a cube does nothing, since structures only recognize module blocks. Wherever it ends up, it is just another wall. Take it to a crafting grid.
+It stores nothing, never forms, and does not connect to the ME network. Structures only recognize module blocks, so one placed in a cube does not count as a structure part.

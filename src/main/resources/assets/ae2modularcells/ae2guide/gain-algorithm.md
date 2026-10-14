@@ -14,17 +14,17 @@ categories:
 
 # Gain Algorithm
 
-How much a module stores and how fast it moves energy are both worked out from two formulas. Whatever sits in the component slots is fed straight into them, so nothing goes stale: swap a component, tear a structure down or mix tiers, and the numbers follow immediately.
+Capacity and transfer rate come from two formulas. Slot contents are counted live, not cached: swapping a component, dismantling a structure or mixing tiers changes the figures immediately.
 
 ## One module, and the whole structure
 
-A single module's capacity is `D = (A + Σ S_i × m_i × k) × (1 + b × C_cap)`. `A` is that tier's base capacity; the `Σ` term sums what the storage components contribute - each one brings its own capacity value `S_i` times its own modifier `m_i`, and the total is then scaled by one shared discount `k`; the trailing bracket is the count bonus, where `C_cap` is how many capacity-providing components that module **actually has** inserted (empty slots do not count).
+A module's capacity is `D = (A + Σ S_i × m_i × k) × (1 + b × C_cap)`. `A` is the tier's base capacity; the `Σ` term sums the storage components' contributions — each component's capacity value `S_i` times its modifier `m_i`, scaled after summation by a shared discount `k`; `(1 + b × C_cap)` is the capacity-side count bonus, where `C_cap` is the number of capacity-providing components **actually inserted**, empty slots excluded.
 
-Rate works the same way: `D_v = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C_tr)`. `V` is the base rate, `Sv_i` / `mv_i` is the rate value and modifier of each energy component (both the Applied Flux `core_*` family and AE2 OMNI Cells' groups count as ones), `kv` is the rate-side discount, and `C_tr` counts the rate-providing components.
+Rate follows the same form: `D_v = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C_tr)`. `V` is the base rate, `Sv_i` / `mv_i` are the rate value and modifier of each energy component (the Applied Flux `core_*` family, AE2 OMNI Cells and others), `kv` is the rate-side discount, and `C_tr` is the number of rate-providing components.
 
-**The two sides are counted separately**: `C_cap` and `C_tr` are tallied independently, so a capacity-only component does not raise the rate side, and a component that provides both is counted once on each side. The price is that a side no longer earns the count bonus from components that do not feed it - that is deliberate.
+**The two sides are counted separately**: `C_cap` and `C_tr` are independent. A capacity-only component does not raise the rate-side count, and a component providing both counts once on each side. A dimension that receives no component loses its count bonus.
 
-A structure is not one number times a block count; it is summed **per module**:
+A structure total is summed **per block**, not a single value multiplied by the block count:
 
 | Structure total | Expression | Meaning |
 |---|---|---|
@@ -32,11 +32,11 @@ A structure is not one number times a block count; it is summed **per module**:
 | Rate `T_v` | `min(Σ D_vj, Σ V_max_j)` | Sum of the modules' rates, clamped by the sum of the per-block caps |
 | Input `T_in` | `min(T_v × f_in, Σ V_in_max_j)` | Charging is tighter than discharging |
 
-Each module carries its own components, so the results differ naturally; with mixed tiers, `V_max` and `V_in_max` are summed per block as well, so expanding a structure really does make it faster instead of hitting a fixed ceiling the moment it forms.
+With mixed tiers, `V_max` and `V_in_max` are also summed per block: expanding a structure raises the ceiling rather than converging on a fixed value at formation.
 
 ## Parameters
 
-| Parameter | Value | What it does |
+| Parameter | Value | Effect |
 |---|---|---|
 | k | 0.2 | Storage component discount: one 256m component contributes about 53.7 MAE |
 | b | 2.0 | Count bonus on the capacity side: a full module multiplies capacity by `1 + 2 × C_cap` |
@@ -44,7 +44,7 @@ Each module carries its own components, so the results differ naturally; with mi
 | bv | 0.1 | Count bonus on the rate side |
 | f_in | 0.5 | Charging is halved: discharge runs at full speed, input at half |
 
-The count bonus is what makes filling every slot worth it: basic / dense / superdense reach ×3 / ×5 / ×7 when full. `k` and `kv` are component constants and cannot be configured; the adjustable ones are `b` / `bv` / `f_in`, in the config file.
+Capacity multipliers when full: basic / dense / superdense reach ×3 / ×5 / ×7. `k` and `kv` are component constants and not configurable; `b` / `bv` / `f_in` are, in the config file.
 
 ## Tier base values
 
@@ -54,15 +54,15 @@ The count bonus is what makes filling every slot worth it: basic / dense / super
 | Dense | 1.6 MAE | 8 000 AE/t | 2 | 128 000 | 64 000 |
 | Superdense | 12.8 MAE | 64 000 AE/t | 3 | 1 024 000 | 512 000 |
 
-## Filled to the brim
+## Filled to capacity
 
-The reference build is "16×16×16, every slot holding a 256m storage component", which is also the physical ceiling of one structure: superdense holds 4096 × 3 = 12288 components, dense holds 4096 × 2 = 8192.
+The reference build is a 16×16×16 structure with every slot holding a 256m storage component, the physical ceiling of one structure: superdense takes 4096 × 3 = 12288 components, dense takes 4096 × 2 = 8192.
 
 | Build | Component value | Per module | Structure total | Versus components |
 |---|---|---|---|---|
 | Dense 16³, 2 × 256m each | 2.20 TAE | 544.9 MAE | 2.23 TAE | 1.01× |
 | Superdense 16³, 3 × 256m each | 3.30 TAE | 1.217 GAE | 4.98 TAE | 1.51× |
 
-The dense row is "what you stack in is what you get"; superdense runs above the raw component value because of its third slot and the larger count bonus.
+The dense row totals about the raw component value; superdense exceeds it, having a third slot and a larger count bonus.
 
-On the same superdense build, transfer is 769.6 MAE/t and charging 384.8 MAE/t after the halving. Discharge is not affected by that halving.
+On the same superdense build, transfer is 769.6 MAE/t and charging 384.8 MAE/t after the halving. Discharge is unaffected.
