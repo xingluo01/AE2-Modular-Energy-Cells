@@ -38,7 +38,7 @@ Each module carries its own components, so the results differ naturally; with mi
 
 | Parameter | Value | What it does |
 |---|---|---|
-| k | 0.2 | Storage component discount: one 256m component contributes 53 687 091 AE |
+| k | 0.2 | Storage component discount: one 256m component contributes about 53.7 MAE |
 | b | 2.0 | Count bonus on the capacity side: a full module multiplies capacity by `1 + 2 × C_cap` |
 | kv | 0.0001 | Energy component rate discount |
 | bv | 0.1 | Count bonus on the rate side |
@@ -65,8 +65,4 @@ The reference build is "16×16×16, every slot holding a 256m storage component"
 
 The dense row is "what you stack in is what you get"; superdense runs above the raw component value because of its third slot and the larger count bonus.
 
-On the same superdense build, transfer is 769.6 MAE/t and charging 384.8 MAE/t after the halving: filling 4.98 TAE takes roughly 11 minutes. Discharge is not affected by that halving.
-
-## One thing to remember
-
-**Unformed modules are not on the network.** A lone block, or a pile that never forms a cube, still stores AE, but that energy belongs to it alone: FE can charge it, while the ME network can neither connect to it nor pull from it. The moment a cube forms, every module's stored energy flows into a single pool, and from then on the whole structure shares one account.
+On the same superdense build, transfer is 769.6 MAE/t and charging 384.8 MAE/t after the halving. Discharge is not affected by that halving.
