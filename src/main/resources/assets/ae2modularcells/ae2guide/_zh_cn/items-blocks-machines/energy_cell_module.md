@@ -29,7 +29,7 @@ categories:
 ## 拼成结构
 
 <GameScene zoom="6" background="transparent">
-  <ImportStructure src="../../assets/assemblies/module_cube_3x3x3.snbt" />
+  <ImportStructure src="../assets/assemblies/module_cube_3x3x3.snbt" />
   <IsometricCamera yaw="195" pitch="30" />
 </GameScene>
 

@@ -388,7 +388,8 @@ vanilla 注册表早于本模组的自建注册表（**实测成立，不是契�
 
 **指南里的资源路径按页相对解析**
 
-- `<ImportStructure src="...">` 与 Markdown 图片的路径都是**相对当前页**的。页在 `ae2guide/` 根下就写 `assets/assemblies/x.snbt`；页在 `items-blocks-machines/` 这类子目录下要写 `../assets/assemblies/x.snbt`，而中文页在 `_zh_cn/` 下再深一层，写 `../../…`。路径写错不会报错，只是那个场景静静地渲染不出来（AE2 自己的语料里子目录页的 `src` 全是 `../`，零例外）。
+- `<ImportStructure src="...">` 与 Markdown 图片的路径都是**相对当前页**的。页在 `ae2guide/` 根下就写 `assets/assemblies/x.snbt`；页在 `items-blocks-machines/` 这类子目录下要写 `../assets/assemblies/x.snbt`。路径写错不会报错，只是那个场景静静地渲染不出来（判据：AE2 自己的语料里，子目录页的 `src` 全是 `../`，根页全无前缀，零例外）。
+- **本地化页不额外加深**：`_zh_cn/` 只是语言目录，GuideME 解析时当它不存在，中文页与英文页写**同样的**相对路径。中文页写成 `../../assets/…` 会超出指南根，实机报 `Missing structure file`。
 
 **数值集中**
 

@@ -35,7 +35,7 @@ categories:
 ## 成型前后
 
 <GameScene zoom="6" background="transparent">
-  <ImportStructure src="../../assets/assemblies/monitors_in_structure.snbt" />
+  <ImportStructure src="../assets/assemblies/monitors_in_structure.snbt" />
   <IsometricCamera yaw="195" pitch="30" />
 </GameScene>
 
