@@ -16,34 +16,35 @@ categories:
 
 How much a module stores and how fast it moves energy are both worked out from two formulas. Whatever sits in the component slots is fed straight into them, so nothing goes stale: swap a component, tear a structure down or mix tiers, and the numbers follow immediately.
 
-## The two formulas
+## One module, and the whole structure
 
-Per module:
+A single module's capacity is `D = (A + Σ S_i × m_i × k) × (1 + b × C_cap)`. `A` is that tier's base capacity; the `Σ` term sums what the storage components contribute - each one brings its own capacity value `S_i` times its own modifier `m_i`, and the total is then scaled by one shared discount `k`; the trailing bracket is the count bonus, where `C_cap` is how many capacity-providing components that module **actually has** inserted (empty slots do not count).
 
-* capacity **D = (A + Σ S_i × k) × (1 + b × C)**
-* rate **D_v = (V + Σ Sv_i × kv) × (1 + bv × C)**
+Rate works the same way: `D_v = (V + Σ Sv_i × mv_i × kv) × (1 + bv × C_tr)`. `V` is the base rate, `Sv_i` / `mv_i` is the rate value and modifier of each energy component (both the Applied Flux `core_*` family and AE2 OMNI Cells' groups count as ones), `kv` is the rate-side discount, and `C_tr` counts the rate-providing components.
 
-Per structure:
+**The two sides are counted separately**: `C_cap` and `C_tr` are tallied independently, so a capacity-only component does not raise the rate side, and a component that provides both is counted once on each side. The price is that a side no longer earns the count bonus from components that do not feed it - that is deliberate.
 
-* capacity **T = Σ D_j**
-* rate **T_v = min(Σ D_vj, Σ V_max_j)**
-* input **T_in = min(T_v × f_in, Σ V_in_max_j)**
+A structure is not one number times a block count; it is summed **per module**:
 
-`A` and `V` are the base capacity and base rate of that module's own tier. `S_i` is the capacity value of the i-th storage component, `Sv_i` the value of the i-th energy storage component (Applied Flux `core_*`): capacity reads the first, rate reads the second, and the two component families drive one formula each. `C` is how many components are **actually inserted**; empty slots do not count.
+| Structure total | Expression | Meaning |
+|---|---|---|
+| Capacity `T` | `Σ D_j` | Sum of the modules' capacities |
+| Rate `T_v` | `min(Σ D_vj, Σ V_max_j)` | Sum of the modules' rates, clamped by the sum of the per-block caps |
+| Input `T_in` | `min(T_v × f_in, Σ V_in_max_j)` | Charging is tighter than discharging |
 
-Structure totals are summed **per module**, not "one module times the block count": each module carries its own components. `V_max` and `V_in_max` are summed the same way, so expanding a structure really does make it faster instead of hitting a fixed ceiling the moment it forms.
+Each module carries its own components, so the results differ naturally; with mixed tiers, `V_max` and `V_in_max` are summed per block as well, so expanding a structure really does make it faster instead of hitting a fixed ceiling the moment it forms.
 
 ## Parameters
 
 | Parameter | Value | What it does |
 |---|---|---|
 | k | 0.2 | Storage component discount: one 256m component contributes 53 687 091 AE |
-| b | 2.0 | Count bonus: a full module multiplies capacity by `1 + 2C` |
-| kv | 0.0001 | Energy storage component rate discount |
+| b | 2.0 | Count bonus on the capacity side: a full module multiplies capacity by `1 + 2 × C_cap` |
+| kv | 0.0001 | Energy component rate discount |
 | bv | 0.1 | Count bonus on the rate side |
 | f_in | 0.5 | Charging is halved: discharge runs at full speed, input at half |
 
-The count bonus is what makes filling every slot worth it: basic / dense / superdense reach ×3 / ×5 / ×7 when full.
+The count bonus is what makes filling every slot worth it: basic / dense / superdense reach ×3 / ×5 / ×7 when full. `k` and `kv` are component constants and cannot be configured; the adjustable ones are `b` / `bv` / `f_in`, in the config file.
 
 ## Tier base values
 
@@ -68,4 +69,4 @@ On the same superdense build, transfer is 769.6 MAE/t and charging 384.8 MAE/t a
 
 ## One thing to remember
 
-**Unformed modules are not on the network.** A lone block, or a pile that never forms a cube, still stores AE, but that energy belongs to it alone: FE can charge it, while the ME network can neither connect to it nor pull from it. The moment a cube forms, every module's stored energy flows into a single pool, and from then on the structure shares one account.
+**Unformed modules are not on the network.** A lone block, or a pile that never forms a cube, still stores AE, but that energy belongs to it alone: FE can charge it, while the ME network can neither connect to it nor pull from it. The moment a cube forms, every module's stored energy flows into a single pool, and from then on the whole structure shares one account.
