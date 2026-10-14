@@ -16,20 +16,11 @@ categories:
 
 How much a module stores and how fast it moves energy are both worked out from two formulas. Whatever sits in the component slots is fed straight into them, so nothing goes stale: swap a component, tear a structure down or mix tiers, and the numbers follow immediately.
 
-## The two formulas
+## Where the maths lives
 
-Per module:
+The two formulas themselves are written out in the **config description** (the "Coefficients" category in `cells.ini`, also visible in the config UI): that is where each expression and each symbol is spelled out, because that is where the three coefficients take effect. This page covers the results.
 
-* capacity **D = (A + Σ S_i × k) × (1 + b × C)**
-* rate **D_v = (V + Σ Sv_i × kv) × (1 + bv × C)**
-
-Per structure:
-
-* capacity **T = Σ D_j**
-* rate **T_v = min(Σ D_vj, Σ V_max_j)**
-* input **T_in = min(T_v × f_in, Σ V_in_max_j)**
-
-`A` and `V` are the base capacity and base rate of that module's own tier. `S_i` is the capacity value of the i-th storage component, `Sv_i` the value of the i-th energy storage component (Applied Flux `core_*`): capacity reads the first, rate reads the second, and the two component families drive one formula each. `C` is how many components are **actually inserted**; empty slots do not count.
+The symbols are just these: `A` and `V` are the base capacity and base rate of that module's own tier, `S_i` / `Sv_i` is the capacity / rate value brought in by the i-th component (each component also carries its own modifier, which is multiplied in), and `C_cap` / `C_tr` is how many components that module **actually has** that provide capacity / rate - empty slots do not count, and the two sides are counted independently. The numbers in the two tables below come out of them.
 
 Structure totals are summed **per module**, not "one module times the block count": each module carries its own components. `V_max` and `V_in_max` are summed the same way, so expanding a structure really does make it faster instead of hitting a fixed ceiling the moment it forms.
 
