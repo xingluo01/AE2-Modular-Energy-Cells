@@ -62,15 +62,6 @@ node tools/check-screen-widgets.cjs .   # 屏幕样式自检
 
 Windows 上同样四条命令另有启动脚本（仓库根）：`run_client.bat` / `run_client_emi.bat` / `run_server.bat` / `run_data.bat`——比命令行多带一个 `--no-configuration-cache`，避免用缓存里的旧 classpath 启动（症状是「刚加的开发环境 mod 不生效」）。
 
-**改指南或语言文件后没生效？先看 `run/resourcepacks/changed/`。** 开发环境里可能挂着一个资源包覆盖（看 `run/options.txt` 的 `resourcePacks` 里有没有 `file/changed`——**这一行会随实机会话变**，不能当恒定状态），它**优先于** jar 内的同名资源，而且内容是一份**手工复制**的快照（`pack.mcmeta` 的 `description` 写的就是 `test`）。它不专属于本仓库：里面有姊妹项目 `ae2_pattern_disk` 的资源，所以**同步只动本模组那几个路径**，别整个目录覆盖。
-
-```bash
-cp -r src/main/resources/assets/ae2modularcells/ae2guide run/resourcepacks/changed/assets/ae2modularcells/
-cp src/main/resources/assets/ae2modularcells/lang/*.json run/resourcepacks/changed/assets/ae2modularcells/lang/
-```
-
-两个坑：① `cp -r` 是**合并**，源里删掉的页面不会从副本消失（指南里会多出一页旧内容），要自己删；② `run/` 不进版本库，这份副本只能手工维持——它过期过一次，症状是「指南改了却还是旧样子」，而那时源文件看起来完全正常。
-
 ## 五、读上游源码之前
 
 - 位置与分支见 `docs/LOCAL_CLONES.md`（**待建**：上游各仓的镜像路径与分支基线都记在那份文档里，可从姊妹项目 AE2 Pattern Disk 的同名文档抄一份，再按本机实际路径改）。

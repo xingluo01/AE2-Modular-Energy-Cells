@@ -15,5 +15,5 @@ navigation:
 
 * [模块化能量单元](items-blocks-machines/energy_cell_module.md)：三个等级、组件槽与模块管理终端。
 * [监控器](items-blocks-machines/monitors.md)：储能百分比与流量读数的面板。
-* [增益算法](gain-algorithm.md)：参数、等级基础值与堆满时的数值。
+* [增益算法](gain-algorithm.md)：两条公式、参数与堆满时的数值。
 * [空白能量单元](items-blocks-machines/blank_energy_unit.md)：合成模块的中间体。
