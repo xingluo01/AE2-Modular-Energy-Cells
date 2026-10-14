@@ -380,6 +380,11 @@ vanilla 注册表早于本模组的自建注册表（**实测成立，不是契�
 
 - 一切方块、方块实体、网格与能量访问都在服务端 tick 线程。这一层没有任何允许出线程的工作（与姊妹项目的样式分析线程不同，本项目不需要）。
 
+**交给 AE2 的集合必须可变**
+
+- 覆写 `getDrops` 时要返回 `ArrayList` 之类的**可变**列表，不要返回 `List.of(...)` / `List.copyOf(...)`。AE2 的扳手拆解（`AEBaseBlockEntity#disassembleWithWrench`）会把这份返回值原样交给 `addAdditionalDrops`，而那里执行的是 `drops.add(stack)` 往列表里追加方块实体库存。不可变列表一追加就抛 `UnsupportedOperationException`，而它在 `removeBlock` 之前——症状是「方块拆不掉」，且**只有库存里真的有东西时才复现**（空库存时那个 `add` 根本不会被调到，于是看起来一切正常）。
+- 判断口径：凡「外部 API 会拿去改」的集合，一律给可变实现（`Collections.synchronizedList(new ArrayList<>())` 这种才是对的写法）。同样口径适用于交给配置存储的列表（见 `ModularCellConfig`）。
+
 **数值集中**
 
 - 容量、速率、槽位数、组件折扣（k / kv）与数量加成（b / bv）、输入比例 f_in、速率与输入上限只在 `EnergyCellTier` / `StorageComponentTier` / `ModularCellConstants` 里定义；公式只在 `common/logic/CellMath` 实现一次。别的地方写第二份就是给未来的平衡改动埋雷。

@@ -26,6 +26,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import appeng.block.AEBaseEntityBlock;
@@ -233,12 +234,19 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
      * {@code Level#destroyBlock}（AE2 的扳手拆解走的就是它）、第三方工具的批量破坏都从 {@code getDrops} 取。
      * 只盖 {@code playerDestroy} 会让那些路径<b>把本体吞掉</b>（方块没了、物品也没了）。</p>
      *
+     * <p><b>返回的必须是可变列表</b>：AE2 的扳手拆解（{@code AEBaseBlockEntity#disassembleWithWrench}）拿到
+     * 这份返回值后，会把它原样交给 {@code addAdditionalDrops} 往里追加方块实体库存（我们的组件槽），
+     * 而那个方法里执行的是 {@code drops.add(stack)}。交一个 {@code List.of(...)} 过去，一有组件就抛
+     * {@code UnsupportedOperationException}——它在 {@code removeBlock} 之前，于是方块拆不掉。
+     * 库里没组件时那个 {@code add} 不会被调到，所以症状看起来是「只有存了组件才拆不下来」。</p>
+     *
      * <p>组件不在这里给：它们由父类的 {@code addAdditionalDrops} 交出来（经 {@code onRemove}）。</p>
      */
     @Override
     public List<ItemStack> getDrops(BlockState state, LootParams.Builder params) {
+        var drops = new ArrayList<ItemStack>(1);
         if (asItem() == Items.AIR) {
-            return List.of();
+            return drops;
         }
         var drop = new ItemStack(asItem());
         // 照父类同一口径把方块实体的设置套上（内存卡命名过的模块，拆下来仍带着那个名字）。
@@ -250,7 +258,8 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
             drop.applyComponents(blockEntity.exportSettings(SettingsFrom.DISMANTLE_ITEM,
                     looter instanceof Player player ? player : null));
         }
-        return List.of(drop);
+        drops.add(drop);
+        return drops;
     }
 
     /** 只有这一档的方块才有对应的方块实体，取用一律经它，别在这里直接 new。 */

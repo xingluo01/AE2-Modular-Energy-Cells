@@ -202,7 +202,10 @@ public final class ModularCellConfig {
             }
             // set 返回「是否真的变了」：文件只读/目录不可写时会是 false，这属于要看得见的问题——
             // 识别完全以配置为准，写不进去就等于内置组件认不出。
-            boolean applied = COMPONENT_GAINS.set(List.copyOf(merged));
+            // 交出去的必须是可变列表：这是给配置存储持有的引用，不是一次性快照。
+            // 与模块方块的 getDrops 同一条教训：把 List.copyOf / List.of 这种不可变列表交给会“拿去改”的
+            // 外部 API，当下可能侥幸不报，等哪天有人对它增删就是 UnsupportedOperationException。
+            boolean applied = COMPONENT_GAINS.set(new ArrayList<>(merged));
             if (applied) {
                 LOGGER.info("组件配置：补入 {} 条内置组件（原有 {} 条）", merged.size() - before, before);
             } else {
