@@ -8,6 +8,7 @@
   "gui.ae2modularcells.module_label": "(%s, %s, %s)",
   "gui.ae2modularcells.tier_group_count": "Modules: %s",
   "gui.ae2modularcells.tier_assembly_count": "Components installed: %s/%s",
+  "gui.ae2modularcells.slot_installed": "Installed: %s",
   "gui.ae2modularcells.energy_storage": "Stored:",
   "gui.ae2modularcells.input_rate": "Input:",
   "gui.ae2modularcells.storage.value": "%s/%s AE",

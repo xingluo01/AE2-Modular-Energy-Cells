@@ -8,6 +8,7 @@
   "gui.ae2modularcells.module_label": "(%s, %s, %s)",
   "gui.ae2modularcells.tier_group_count": "模块数量：%s",
   "gui.ae2modularcells.tier_assembly_count": "已装配存储组件：%s/%s",
+  "gui.ae2modularcells.slot_installed": "详细已安装：%s",
   "gui.ae2modularcells.energy_storage": "储能：",
   "gui.ae2modularcells.input_rate": "输入速率：",
   "gui.ae2modularcells.storage.value": "%s/%s AE",

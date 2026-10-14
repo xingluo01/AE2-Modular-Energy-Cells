@@ -1,5 +1,6 @@
 package io.github.lounode.ae2modularcells.client.gui;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -868,6 +869,44 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         if (wanted != getMenu().rowOffset) {
             getMenu().setRowOffset(wanted);
         }
+    }
+
+    /**
+     * 悬停在组件格上时补一行精确件数。
+     *
+     * <p>格子里画的是缩略写法（{@code 12.2k}），而「这一格到底装了多少件」是玩家算装配量的依据，不该只是
+     * 一个近似。</p>
+     *
+     * <p>走这个钩子、而不走 AE2 的 {@code AppEngSlot#getCustomTooltip}：后者是<b>替换</b>语义，而
+     * {@code AEBaseScreen#renderTooltips} 画完自定义那份后并不 return，紧接着还会画一遍悬停槽的标准 tooltip
+     * ——两处一起出现，新加的那行还会被后画的框盖住。上游自己的附加行（如 {@code CellWorkbenchScreen}）也都
+     * 走这里。</p>
+     */
+    @Override
+    protected List<Component> getTooltipFromContainerItem(ItemStack stack) {
+        var lines = new ArrayList<>(super.getTooltipFromContainerItem(stack));
+        var slot = this.hoveredSlot;
+        if (slot != null && isComponentSlot(slot)) {
+            int count = slot.index >= 0 && slot.index < this.slotCounts.length ? this.slotCounts[slot.index] : 0;
+            if (count > 0) {
+                lines.add(Component.translatable("gui.ae2modularcells.slot_installed", count));
+            }
+        }
+        return lines;
+    }
+
+    /** 这个槽是不是某条带上的组件格（标题行的图标格也是 {@code AppEngSlot}，不能只按类型认）。 */
+    private boolean isComponentSlot(Slot slot) {
+        var semantic = getMenu().getSlotSemantic(slot);
+        if (semantic == null) {
+            return false;
+        }
+        for (int band = 0; band < MAX_ROWS; band++) {
+            if (semantic == EnergyModuleSlotSemantics.componentSemantic(band)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

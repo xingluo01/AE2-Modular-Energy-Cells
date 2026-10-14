@@ -14,6 +14,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.MenuType;
@@ -249,9 +250,115 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      * 取数时。</p>
      */
     private AppEngSlot componentSlot(int band, int column) {
-        var slot = new AppEngSlot(moduleComponents, band * SLOTS_PER_ROW + column);
-        slot.setHideAmount(true);
-        return slot;
+        return new ComponentBucketSlot(band * SLOTS_PER_ROW + column);
+    }
+
+    /**
+     * 组件桶的槽：一格 = 一种组件的一个桶，而不是一个物品栈。
+     *
+     * <p><b>为何必须自己建槽类</b>：原版那套「读这一格 → 算能放多少 → 写回这一格」的搬运模型假定格子背后是
+     * 一个物品栈，而桶的底料是「该档各模块的真实槽」（件数可能远超一叠，也可能散在几十块模块上）。
+     * AE2 的 shift 点击走的是 {@code AEBaseMenu#quickMoveToOtherSlots} → {@code Slot#safeInsert}，而
+     * {@code AppEngSlot} 没有覆写 {@code safeInsert}：它默认的实现会拿 {@code getMaxStackSize(stack)} 去夹那
+     * 个封顶到 {@value EnergyModuleSlotSemantics#MAX_REPORTED_COUNT} 的代表栈，最后经
+     * {@code setByPlayer → set → setItemDirect} 写回——而 {@code setItemDirect} 在服务端是空实现（桶没有可整体
+     * 替换的底料）。结果是物品被从手上扣掉、却哪儿都没进去：玩家看到的是「组件从背包消失了，GUI 里也没多出
+     * 来」。</p>
+     *
+     * <p>所以这里把 {@code safeInsert} 接到聚合库存自己的 {@code insertItem} 上——它按「该档真实剩余名额」算能
+     * 放多少、并把组件摊到各模块的空槽（见 {@code installInto}）。</p>
+     */
+    private final class ComponentBucketSlot extends AppEngSlot {
+
+        /**
+         * 这一格在聚合库存里的下标。不复用 {@code AppEngSlot} 的字段：那是它的私有不变量，换个版本就可能换个
+         * 名字或可见性，而这里只依赖「建槽时给了哪一格」。
+         */
+        private final int bucketIndex;
+
+        private ComponentBucketSlot(int bucketIndex) {
+            super(moduleComponents, bucketIndex);
+            this.bucketIndex = bucketIndex;
+            // 格内数字由屏幕画（理由同外层那处），原版那份关掉。
+            setHideAmount(true);
+        }
+
+        @Override
+        public ItemStack safeInsert(ItemStack stack) {
+            return safeInsert(stack, stack.getCount());
+        }
+
+        /**
+         * 往桶里放：直接落到聚合库存的插入路径。
+         *
+         * <p>返回值是「没能放进去的那部分」（原版契约），调用方拿它决定还多少给玩家。所以这里绝不能像默认实现
+         * 那样「先按手上扣、再把容器写丢弃」——那就是物品凭空消失。</p>
+         *
+         * <p>源槽自己会不会成为目的地，不在这里管：那条由 {@code quickMoveSource} 在筛选阶段就排除了，比在这里
+         * 启发式地猜「入参是不是本格报出的那份」可靠得多（后者在玩家侧先吸走一截后就会失效）。</p>
+         */
+        @Override
+        public ItemStack safeInsert(ItemStack stack, int amount) {
+            if (stack.isEmpty() || amount <= 0) {
+                return stack;
+            }
+            var toInsert = stack.copyWithCount(Math.min(amount, stack.getCount()));
+            var leftOver = moduleComponents.insertItem(this.bucketIndex, toInsert, false);
+            int moved = toInsert.getCount() - leftOver.getCount();
+            if (moved <= 0) {
+                return stack;
+            }
+            setChanged();
+            return stack.copyWithCount(stack.getCount() - moved);
+        }
+
+        /**
+         * 对账式写入。
+         *
+         * <p>原版这几条路径（搬运后的回写、拖拽分发、取空后的清格）都以「这一格现在应该长这样」的口吻写回来，
+         * 而它们眼里的这一格就是 {@code getStackInSlot} 报出去的那个<b>封顶值</b>——所以差值也在同一个域里算，
+         * 得到的就是该动多少件底料。</p>
+         *
+         * <p><b>为何不能忽略写入</b>：从桶 shift 点击时，物品进的是玩家槽（那是原版槽、真的放下了），而桶这一
+         * 侧唯一的扣量钩子就是这次回写——忽略它等于凭空复制。三种情形都对得上：整批搬走（写成空 ⇒ 差值 = 减去
+         * 封顶值）、只搬走一部分（写成剩下那几件 ⇒ 差值 = 搬走的量）、整格原样写回（差值 = 0）。</p>
+         */
+        @Override
+        public void set(ItemStack stack) {
+            if (getMenu().getPlayer().level().isClientSide()) {
+                // 客户端的槽内容来自同步包，底下没有底料：这里只把镜像改成同步过来的那一份
+                // （AppEngSlot#set 原来的落点就是它）。不这么分，客户端会照着下面的对帐逻辑去改它那份
+                // 方块实体副本，而镜像反而不更新。
+                moduleComponents.setItemDirect(this.bucketIndex, stack);
+                setChanged();
+                return;
+            }
+            var current = moduleComponents.kindAt(this.bucketIndex);
+            int currentCount = current == null ? 0 : Math.min(current.count(), MAX_REPORTED_COUNT);
+            int desired = stack.isEmpty() ? 0 : stack.getCount();
+            if (!stack.isEmpty() && current != null && !ItemStack.isSameItemSameComponents(current.stack(), stack)) {
+                // 原版不会把另一种组件写进同一格（同种的叠放、空的另放），真遇到了只当「不动」：
+                // 照差值硬塞会把两种组件搅进同一格，而这一格只能是一种组件的桶。
+                setChanged();
+                return;
+            }
+            int delta = desired - currentCount;
+            if (delta < 0) {
+                moduleComponents.removeKind(this.bucketIndex, -delta);
+            } else if (delta > 0) {
+                // 原版的放格/拖拽若走 set 而不走 safeInsert，这一支就是常态（放一件就 +1）。装得下多少算多少，
+                // 装不下的退回玩家——宁可退回，也不要静默丢件。客户端不该走到这里（它会造出幽灵掉落物）。
+                var leftOver = moduleComponents.insertItem(this.bucketIndex, stack.copyWithCount(delta), false);
+                var player = getMenu().getPlayer();
+                if (!leftOver.isEmpty() && !player.level().isClientSide()) {
+                    if (!player.getInventory().add(leftOver)) {
+                        player.drop(leftOver, false);
+                    }
+                }
+            }
+            // 差值为 0 也要通知：客户端上那一格的内容可能变过。
+            setChanged();
+        }
     }
 
     /** 供屏幕显示状态用；组件槽见 {@link #moduleComponents()}，标题行图标见 {@link #moduleTitles()}。 */
@@ -342,6 +449,38 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     }
 
     /**
+     * 正在被搬运的那个槽（{@link #quickMoveStack} 期间有效，其余时候为 {@code null}）。
+     *
+     * <p>AE2 挑搬运目的地时<b>不排除源槽</b>，而源桶恰好是可放的（该档还有名额）。玩家背包收不下时，兜底就会
+     * 轮到源槽自己——对桶而言那是实打实的错账：它先把这一格报出的数量插回底料，上层再拿「剩下的」回写这一格
+     * （见 {@code ComponentBucketSlot#set}），同一批件数会被扣两遍。把栈搬进它自己本来就无意义，所以显式禁掉。</p>
+     *
+     * <p><b>实际上这条是冗余的</b>：上游的 {@code AEBaseMenu#isValidQuickMoveDestination} 里已有
+     * {@code isPlayerSideSlot(candidateSlot) != fromPlayerSide}，同侧槽本来就进不了目标集合，而组件槽都是非玩家侧
+     * （{@code EnergyModuleSlotSemantics} 注册时给的 {@code false}）——所以源桶从来不会被选中。留着它是因为这个
+     * 结论依赖上游那一行；哪天那一行放宽了，这里不至于跟着错帐。</p>
+     */
+    @Nullable
+    private Slot quickMoveSource;
+
+    /**
+     * 搬运的主入口：借它把「被点的槽」记下来，供 {@link #isValidQuickMoveDestination} 排除。
+     *
+     * <p>其余行为（叠放、空位优先、剩余量回写）仍留在上游那一份里，不重写。</p>
+     */
+    @Override
+    public ItemStack quickMoveStack(Player player, int index) {
+        var previous = this.quickMoveSource;
+        this.quickMoveSource = index >= 0 && index < this.slots.size() ? this.slots.get(index) : null;
+        try {
+            return super.quickMoveStack(player, index);
+        } finally {
+            // 搬运动里可能嵌套调用（上游就是循环调），所以按栈恢复而不是清空。
+            this.quickMoveSource = previous;
+        }
+    }
+
+    /**
      * 快速移动的目标筛选。
      *
      * <p>选中了某个等级组时，组件只会被塞进<b>那一组的模块槽</b>里——一个 4096 块的段里想给某一档换组件，
@@ -353,6 +492,10 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     @Override
     protected boolean isValidQuickMoveDestination(Slot candidateSlot, ItemStack stackToMove,
             boolean fromPlayerSide) {
+        if (candidateSlot == this.quickMoveSource) {
+            // 源槽不当自己的目的地（理由见 quickMoveSource；上游本来也排除同侧槽，这里是显式兜底）。
+            return false;
+        }
         if (!super.isValidQuickMoveDestination(candidateSlot, stackToMove, fromPlayerSide)) {
             return false;
         }
@@ -706,6 +849,18 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         @Override
         public int size() {
             return MAX_SLOT_COUNT;
+        }
+
+        /**
+         * 从这一格代表的桶里抽走若干件（对帐写入用，见 {@code ComponentBucketSlot#set}）。
+         */
+        private void removeKind(int slotIndex, int count) {
+            var kind = kindAt(slotIndex);
+            var row = rowAt(slotIndex);
+            if (kind == null || row == null) {
+                return;
+            }
+            uninstallFrom(row.tier(), kind.stack().getItem(), count);
         }
 
         /** 该格对应的聚合条目；客户端、空带、标题行、或该格还没用到时给 {@code null}。 */
