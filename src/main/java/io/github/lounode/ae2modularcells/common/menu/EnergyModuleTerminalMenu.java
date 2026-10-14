@@ -219,8 +219,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         // 而「终端样式」只改「哪几条带在用」——所以不能按当前条数建槽，否则切档又要重建菜单。
         for (int band = 0; band < MAX_ROWS; band++) {
             for (int column = 0; column < SLOTS_PER_ROW; column++) {
-                addSlot(new AppEngSlot(moduleComponents, band * SLOTS_PER_ROW + column),
-                        EnergyModuleSlotSemantics.componentSemantic(band));
+                addSlot(componentSlot(band, column), EnergyModuleSlotSemantics.componentSemantic(band));
             }
         }
         for (int row = 0; row < MAX_ROWS; row++) {
@@ -235,6 +234,24 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         if (isServerSide()) {
             syncFromHost();
         }
+    }
+
+    /**
+     * 建一个组件槽。
+     *
+     * <p>关掉原版那份数量（{@code setHideAmount}）：这一格的栈数量只是「报给原版的上限」，给左键取整格、右键
+     * 取一半这些搬运量用（见 {@link EnergyModuleSlotSemantics#MAX_REPORTED_COUNT}），而真实件数由屏幕画。
+     * 两处都画的结果是两个数字叠在同一个角落（原版装饰渲染与屏幕用的是同一个坐标），超过一叠的格子看上去
+     * 就是一团糊；关掉原版那份之后数字只有一个出处。</p>
+     *
+     * <p>作用机制在 AE2 侧：它用 {@code AbstractContainerScreenMixin} 把原版 {@code renderSlot} 里的栈换成
+     * {@code AppEngSlot#getDisplayStack()}，只对 {@code AppEngSlot} 生效——所以这个开关必须在槽上，而不是在
+     * 取数时。</p>
+     */
+    private AppEngSlot componentSlot(int band, int column) {
+        var slot = new AppEngSlot(moduleComponents, band * SLOTS_PER_ROW + column);
+        slot.setHideAmount(true);
+        return slot;
     }
 
     /** 供屏幕显示状态用；组件槽见 {@link #moduleComponents()}，标题行图标见 {@link #moduleTitles()}。 */
@@ -675,8 +692,8 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      * 写的时候不动那一格的「位置」，而是把组件摊到该档各模块的空槽上（{@link #installInto}）——所以玩家放进
      * 哪一格不影响结果，一格只是「一种组件的一个桶」。</p>
      *
-     * <p>表示栈的件数恒为 1：真实件数由屏幕画。结构一大件数就超出物品栈能表达的范围，而这里的格本来就不是
-     * 物品栈。</p>
+     * <p>表示栈的件数按 {@link EnergyModuleSlotSemantics#MAX_REPORTED_COUNT} 封顶：真实件数常常远超一叠，
+     * 而栈本身只是个桶（一格 = 一种组件），给它个数只为搬运量服务；显示值由屏幕画。</p>
      */
     private final class ModuleComponentInventory implements InternalInventory {
 

@@ -27,6 +27,7 @@ import appeng.core.AEConfig;
 import appeng.menu.SlotSemantic;
 import appeng.menu.SlotSemantics;
 
+import io.github.lounode.ae2modularcells.AEModularCellsRegistries;
 import io.github.lounode.ae2modularcells.common.EnergyCellTier;
 import io.github.lounode.ae2modularcells.common.ModularCellTiers;
 import io.github.lounode.ae2modularcells.common.block.EnergyCellModuleBlock;
@@ -90,6 +91,20 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
 
     /** 数值文字的最大缩放：右下两条数值用它的宽反推缩放，小于这个值就不再缩（再小就看不清了）。 */
     private static final float VALUE_MIN_SCALE = 0.4F;
+
+    /** 一格槽的边长（原版固定 16px，槽位坐标就是格子的左上角）。 */
+    private static final int SLOT_SIZE = 16;
+
+    /** 格内数字的内边：离格线留一点，不让笔画压在贴图的花边上。 */
+    private static final int SLOT_COUNT_INSET = 2;
+
+    /**
+     * 格内数字的最小缩放。
+     *
+     * <p>要看住的是计数模式给的写法，不是原始数字：{@code 12.3k} 这类最多 5 字符，降到 0.35 才塞得进 12px
+     * 的可用宽（0.5 时画宽约 15px，最后一列会压到滚动条轨道上）。</p>
+     */
+    private static final float SLOT_COUNT_MIN_SCALE = 0.35F;
 
     /** 被选中的等级组，整条带压一层这个透明度的选择色。 */
     private static final int SELECTION_ALPHA = 0x40;
@@ -497,25 +512,53 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     /**
      * 组件格里的件数。
      *
-     * <p>原版会把栈的数量画到 64 为止（菜单把真实件数封顶到 {@code MAX_REPORTED_COUNT} 才报出去），所以超过
-     * 那一档就得自己补上——否则一个装了 81 件的格子会写成 64，而玩家是照这个数判断装配量的。位置与样式跟着
-     * 原版的装饰渲染来（右下角、白字带阴影），才看不出是两处画的。</p>
+     * <p><b>这些数字全部由本屏幕画</b>：原版那份已经被 {@code AppEngSlot#setHideAmount} 关掉了（见菜单的
+     * {@code componentSlot}）。原版只画得到一叠以内的数——超过就不再增长，而这里的一格可以是成千件（16³ 的
+     * 一格能装几十件的同种组件），它根本表达不了。</p>
+     *
+     * <p>曾经的分工是「≤64 归原版、>64 归我们」，而两处用的坐标完全相同（都被右下角对齐陷阱锁在
+     * {@code x + 17 - 宽度, y + 9}），于是超过 64 的格子显示成两个数字叠在一起——看上去就像数字被一叠的 64
+     * 盖住了。现在只有一个出处，也就不存在谁盖谁。</p>
+     *
+     * <p>画法：右下角对齐、白字带黑描边（跟原版装饰渲染同一个位置与观感），但<b>大小自己管</b>——数字先过
+     * 左侧那枚「显示方式」按钮的档位（字母 / 科学 / 工程），放不下格子就按比例缩到格子宽度以内，不再像原版
+     * 那样固定尺寸地溢出到隔壁格子。</p>
      */
     private void drawComponentCounts(GuiGraphics guiGraphics) {
+        // 档位一帧只取一次：格数最多百来个，每次都问一遍枚举没必要。
+        var mode = NumberDisplayMode.current();
         for (int band = 0; band < this.bands; band++) {
             if (bandIsTitle(band) || bandMark(band).equals(EMPTY_MARK)) {
                 continue;
             }
             for (var slot : getMenu().getSlots(EnergyModuleSlotSemantics.componentSemantic(band))) {
                 int count = slot.index >= 0 && slot.index < this.slotCounts.length ? this.slotCounts[slot.index] : 0;
-                if (count <= EnergyModuleSlotSemantics.MAX_REPORTED_COUNT) {
-                    // 一叠以内原版自己会画，不重复画（两处画同一个数会看得出重影）。
+                if (count <= 0) {
+                    // 空格子：原版会画一个“没有物品”的淡图标，那里不该再叠一个 0。
                     continue;
                 }
-                String text = String.valueOf(count);
-                guiGraphics.drawString(font, text, slot.x + 17 - font.width(text), slot.y + 9, 0xFFFFFF, true);
+                drawSlotCount(guiGraphics, mode.format(count), slot.x, slot.y);
             }
         }
+    }
+
+    /**
+     * 一格里的件数：右下角对齐，超出可用宽就整体缩到格子宽度以内。
+     *
+     * <p>缩放后要按缩过的尺寸反推落点，否则缩小的数字会从原地往右下飘、反而压到格线外——偏移量都得乘
+     * {@code scale}。</p>
+     */
+    private void drawSlotCount(GuiGraphics guiGraphics, String text, int slotX, int slotY) {
+        int available = SLOT_SIZE - SLOT_COUNT_INSET * 2;
+        int width = font.width(text);
+        float scale = width <= available ? 1.0F : Math.max(SLOT_COUNT_MIN_SCALE, (float) available / width);
+        int drawX = slotX + SLOT_SIZE - SLOT_COUNT_INSET - Math.round(width * scale);
+        int drawY = slotY + SLOT_SIZE - SLOT_COUNT_INSET - Math.round(font.lineHeight * scale);
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(drawX, drawY, 0F);
+        guiGraphics.pose().scale(scale, scale, 1F);
+        guiGraphics.drawString(font, text, 0, 0, 0xFFFFFF, true);
+        guiGraphics.pose().popPose();
     }
 
     /**
@@ -581,7 +624,7 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
                 continue;
             }
             var slot = slots.get(0);
-            if (isHovering(slot.x, slot.y, 16, 16, mouseX, mouseY)) {
+            if (isHovering(slot.x, slot.y, SLOT_SIZE, SLOT_SIZE, mouseX, mouseY)) {
                 return title.id();
             }
         }
@@ -827,11 +870,22 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         }
     }
 
-    /** 等级短 id（同步过来的那个）换成可翻译的名字；认不出来就给空，界面不因为一个陌生 id 崩掉。 */
+    /**
+     * 等级短 id 换成可显示的名字。
+     *
+     * <p><b>向该档的方块要名字，而不是自己拼语言键</b>：方块名本来就是本地化过的，而且与物品栏里看到的是
+     * 同一个。另一头为什么不行——语言键得按 {@code block.<命名空间>.<短 id>_energy_cell_module} 拼，而这套
+     * 命名规则是本模组内置三档的约定：换了实现（例如 KubeJS 脚本注册的等级与方块）就会拼出一个不存在的键，
+     * 界面上直接显示成一串裸键。</p>
+     *
+     * <p>查不到方块（那一档没有注册方块套装）或等级为空时给空文字：界面不因为一个陌生 id 崩掉，也不显示
+     * 半句话。</p>
+     */
     private static Component tierName(@Nullable EnergyCellTier tier) {
         if (tier == null) {
             return Component.empty();
         }
-        return Component.translatable("block.ae2modularcells." + tier.id() + "_energy_cell_module");
+        var block = AEModularCellsRegistries.moduleBlock(tier);
+        return block == null ? Component.empty() : block.getName();
     }
 }
