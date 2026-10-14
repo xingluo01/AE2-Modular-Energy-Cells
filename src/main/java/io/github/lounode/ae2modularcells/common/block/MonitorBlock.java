@@ -56,6 +56,9 @@ public class MonitorBlock extends HorizontalDirectionalBlock implements EntityBl
     public MonitorBlock(Kind kind, Properties properties) {
         super(properties);
         this.kind = kind;
+        // 同模块方块：布尔属性的第一个值是 true，不显式声明就会以「已成型」的面貌放下来，
+        // 等下一 tick 重扫判不成型再换成未成型那一套贴图（sideUnformed / frontUnformed）。
+        registerDefaultState(defaultBlockState().setValue(FORMED, false));
     }
 
     /**

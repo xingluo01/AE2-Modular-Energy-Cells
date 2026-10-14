@@ -82,6 +82,10 @@ public class EnergyCellModuleBlock extends AEBaseEntityBlock<EnergyCellModuleBlo
     public EnergyCellModuleBlock(EnergyCellTier tier, Properties properties) {
         super(properties);
         this.tier = tier;
+        // 默认必须是未成型。布尔属性在 vanilla 里是 ImmutableSet.of(true, false)，而 BlockState 的默认值取每个属性
+        // 的**第一个**值，所以不显式声明的话新放下的方块就是 formed=true——客户端会先画一帧成型（连接边框 + 自发光层），
+        // 等下一 tick 重扫判不成型再切成素面，玩家看到的是「每次放下都闪一下」。
+        registerDefaultState(defaultBlockState().setValue(FORMED, false));
     }
 
     /** 这一档的等级。结构检测、容量汇总与菜单展示都按它取数值。 */
