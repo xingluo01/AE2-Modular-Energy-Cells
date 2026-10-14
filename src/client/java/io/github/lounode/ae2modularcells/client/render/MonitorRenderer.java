@@ -109,13 +109,16 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
             ResourceLocation.fromNamespaceAndPath("appflux", "energy/fe");
 
     /**
-     * 自带备用图标。
+     * 自带备用图标（方块图集的 sprite id，不是贴图路径）。
      *
-     * <p>先前拿 NeoForge 的流体材质（{@code milk_still}）顶过这一格——那是一张牛奶贴图，与 FE 没有任何
-     * 关系。自带素材的意义就是不依赖任何第三方模组也能画出东西（不会变成 missingno）。</p>
+     * <p>先前的实现是一张静态的 {@code textures/gui/fe_icon.png}，用 {@code RenderType.text(贴图路径)} 直接绑纹理
+     * 画——那条路无法显示动画（贴图自己的 {@code .mcmeta} 只在图集里生效）。现在它与 AppFlux 那张一样走图集
+     * sprite，于是备胎也有动画。</p>
+     *
+     * <p>它也保证了不依赖任何第三方模组也能画出东西：AppFlux 缺席时不会变成 missingno。</p>
      */
     private static final ResourceLocation FALLBACK_ICON =
-            ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "textures/gui/fe_icon.png");
+            ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "block/fe_icon");
 
     /** 图标边长占正面边长的比例：1/4。再大就会把正面的读数挤得无处可放。 */
     private static final float ICON_FRACTION = 0.25F;
@@ -234,25 +237,22 @@ public class MonitorRenderer implements BlockEntityRenderer<MonitorBlockEntity> 
     private static void drawIcon(PoseStack pose, MultiBufferSource buffers, float y, float size) {
         var matrix = pose.last().pose();
         float half = size / 2.0F;
-        // 默认用自带纹理，UV 取满格。
-        ResourceLocation texture = FALLBACK_ICON;
-        float u0 = 0.0F;
-        float u1 = 1.0F;
-        float v0 = 0.0F;
-        float v1 = 1.0F;
-        if (ModList.get().isLoaded("appflux")) {
-            var atlas = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS);
-            var sprite = atlas.apply(APPFUX_FE_SPRITE);
-            // 缺 sprite 时 apply 会返回 missingno：拿它的名字比一下，别把紫黑格画到方块上。
-            if (!sprite.contents().name().equals(MissingTextureAtlasSprite.getLocation())) {
-                texture = InventoryMenu.BLOCK_ATLAS;
-                u0 = sprite.getU0();
-                u1 = sprite.getU1();
-                v0 = sprite.getV0();
-                v1 = sprite.getV1();
-            }
+        // 两张都走方块图集的 sprite：装了 AppFlux 用它的，否则用自带的。
+        //
+        // 自带那张是帧动画（32 帧，见 textures/block/fe_icon.png.mcmeta），所以不能像以前那样用
+        // RenderType.text(贴图路径) 直接绑纹理——那条路画出来是静止的第一帧。走 sprite 才是动画的：UV 取自
+        // sprite，而 sprite 的 UV 每帧跟着动画更新。
+        var atlas = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS);
+        var sprite = atlas.apply(ModList.get().isLoaded("appflux") ? APPFUX_FE_SPRITE : FALLBACK_ICON);
+        if (sprite.contents().name().equals(MissingTextureAtlasSprite.getLocation())) {
+            // 缺 sprite 时 apply 会返回 missingno：索性不画，别把紫黑格印在方块正面。
+            return;
         }
-        VertexConsumer consumer = buffers.getBuffer(RenderType.text(texture));
+        float u0 = sprite.getU0();
+        float u1 = sprite.getU1();
+        float v0 = sprite.getV0();
+        float v1 = sprite.getV1();
+        VertexConsumer consumer = buffers.getBuffer(RenderType.text(InventoryMenu.BLOCK_ATLAS));
         // 贴图左上为 UV 原点、v 向下；这里从下边两角开始逆时针绕一圈。
         consumer.addVertex(matrix, -half, y + size, 0.0F).setColor(0xFFFFFFFF).setUv(u0, v1)
                 .setLight(LightTexture.FULL_BRIGHT);
