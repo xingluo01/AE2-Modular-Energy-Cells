@@ -36,19 +36,19 @@ A single unit, or a pile that never forms a cube, is not a structure. It still s
 
 ## Component slots
 
-Every unit carries its own component slots. Insert **storage components** to raise capacity and transfer rate:
+Every unit carries its own component slots, so a structure's total slot count is the sum over its blocks. Insert **storage components** to raise capacity and transfer rate:
 
 * AE2's 1k to 256k
 * MEGA Cells' 1m to 256m
 * AppFlux's core_1k to 256m
 
-Components are counted per block and summed over the whole structure, and filling every slot adds a count bonus. They are saved with the unit they sit in.
+The terminal does not show them per block: each tier shares one row of 12 slots, **one component type per slot** (the same type stacks, and the slot shows the count; a full row spills into another row below). Which slot you drop it into does not matter - the system spreads new components across the blocks of that tier itself. Components are counted per block and summed over the whole structure, and filling every slot adds a count bonus. They are saved with the unit they sit in.
 
 ## Energy module terminal
 
 Right-click a **formed** structure to open the terminal.
 
-It lists the units of the structure and their component slots, along with the structure's stored energy and input rate. Units are grouped by tier, with a title row for each group (tier icon and unit count): right-click a title icon to select that group, after which quick-move only puts components there.
+It groups by tier: each group has a title row (tier icon, unit count, and `components installed: a/b`) followed by that tier's component rows. Right-click a title icon to select that group, after which quick-move only puts components there.
 
 The three buttons on the left:
 

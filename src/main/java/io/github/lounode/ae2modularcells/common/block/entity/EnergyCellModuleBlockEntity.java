@@ -3,6 +3,7 @@ package io.github.lounode.ae2modularcells.common.block.entity;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
@@ -14,6 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -41,7 +43,6 @@ import io.github.lounode.ae2modularcells.common.block.StructurePart;
 import io.github.lounode.ae2modularcells.common.block.MonitorBlock;
 import io.github.lounode.ae2modularcells.common.block.entity.MonitorBlockEntity;
 import io.github.lounode.ae2modularcells.common.ComponentGain;
-import io.github.lounode.ae2modularcells.common.StorageComponents;
 import io.github.lounode.ae2modularcells.common.energy.InsertOnlyEnergyStorage;
 import io.github.lounode.ae2modularcells.common.inventory.StructureComponentItemHandler;
 import io.github.lounode.ae2modularcells.common.logic.CellMath;
@@ -1597,11 +1598,11 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
     }
 
     /**
-     * 整段的行表（标题行按等级分组、模块行每行 3 个），见 {@link TerminalRows}。
+     * 整段的行表（每档一条标题行 + 若干组件行，行数按该档的组件种类数延伸），见 {@link TerminalRows}。
      *
-     * <p>缓存到「账目快照」上：行表只取决于哪一块是哪一档，而那段信息不会比账目变得更频——结构或组件一变，
-     * 账目快照就换了一份新的（{@link StructureStats#equals}），缓存自然失效。重算一次要逐块读方块状态，
-     * 而滚动窗口每帧都可能问它，所以不能每次都现算。</p>
+     * <p>缓存到「账目快照」上：行表取决于哪一块是哪一档、以及每档装了几种组件，而这两样都不会比账目变得更频
+     * ——结构或组件一变，账目快照就换了一份新的（{@link StructureStats#equals}，各块的组件增益就在里面），
+     * 缓存自然失效。重算一次要逐块读方块状态与组件槽，而滚动窗口每帧都可能问它，所以不能每次都现算。</p>
      */
     public List<TerminalRows.Row> rows() {
         var core = resolveCore();
@@ -1619,13 +1620,42 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
         var origin = core.structureOrigin;
         int side = core.ownStats.side();
         if (level == null || origin == null || side <= 1) {
-            // 未成型（或核心不在场）：只有自己一块，仍然给它一条标题 + 一条模块行，界面不至于没头没尾。
+            // 未成型（或核心不在场）：只有自己一块，仍然给它一条标题 + 一条组件行，界面不至于没头没尾。
             rows.add(TerminalRows.Row.title(core.tier));
-            rows.add(new TerminalRows.Row(null, 0, 1, new int[] { 0 }));
+            rows.add(TerminalRows.Row.slots(core.tier, 0));
         } else {
             var layout = new MultiblockScanner.Layout(origin, side);
             int count = layout.moduleCount();
-            TerminalRows.build(count, index -> tierOfModuleAt(level, layout, index), rows);
+            var tiers = ModularCellTiers.all();
+            int[] moduleCounts = new int[tiers.size()];
+            var kinds = new ArrayList<HashSet<Item>>(tiers.size());
+            for (int index = 0; index < tiers.size(); index++) {
+                kinds.add(new HashSet<>());
+            }
+            for (int index = 0; index < count; index++) {
+                var tier = tierOfModuleAt(level, layout, index);
+                if (tier == null) {
+                    continue;
+                }
+                int slotIndex = ModularCellTiers.indexOf(tier);
+                if (slotIndex < 0 || slotIndex >= moduleCounts.length) {
+                    continue;
+                }
+                moduleCounts[slotIndex]++;
+                // 种类只从真实存在的那一块上数：区块没加载或只剩方块时，它照样占一个模块名额，只是看不见内容。
+                var module = moduleAt(level, layout, index);
+                if (module == null) {
+                    continue;
+                }
+                var inventory = module.getInternalInventory();
+                for (int slot = 0; slot < inventory.size(); slot++) {
+                    var stack = inventory.getStackInSlot(slot);
+                    if (!stack.isEmpty()) {
+                        kinds.get(slotIndex).add(stack.getItem());
+                    }
+                }
+            }
+            TerminalRows.build(index -> moduleCounts[index], index -> kinds.get(index).size(), rows);
         }
         if (!degraded) {
             core.rowCache = rows;
@@ -1648,6 +1678,17 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             return module.tier();
         }
         return level.getBlockState(cursor).getBlock() instanceof EnergyCellModuleBlock block ? block.tier() : null;
+    }
+
+    /** 结构里第 {@code index} 块的方块实体；区块没加载、或那里只剩方块没有实体时给 {@code null}。 */
+    @Nullable
+    private static EnergyCellModuleBlockEntity moduleAt(Level level, MultiblockScanner.Layout layout, int index) {
+        var cursor = new BlockPos.MutableBlockPos();
+        layout.modulePos(index, cursor);
+        if (!level.isLoaded(cursor)) {
+            return null;
+        }
+        return level.getBlockEntity(cursor) instanceof EnergyCellModuleBlockEntity module ? module : null;
     }
 
     /**

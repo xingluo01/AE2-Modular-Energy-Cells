@@ -4,24 +4,22 @@ import appeng.menu.SlotSemantic;
 import appeng.menu.SlotSemantics;
 
 import io.github.lounode.ae2modularcells.AE2ModularCells;
-import io.github.lounode.ae2modularcells.common.ModularCellConstants;
 import io.github.lounode.ae2modularcells.common.logic.TerminalRows;
 
 /**
  * 模块管理终端里那批槽位的语义（语义名就是样式文档里的键，改名字等于改协议）。
  *
- * <p>面板最多 12 条 18px 带（最少 4 条，实际条数由「终端样式」档位与窗口高度定，见屏幕类），每条带 3 列；
- * 每列是「1 个模块槽 + 3 个组件槽」——贴图那一行 12 格就是「模块槽、组件槽、组件槽、组件槽」重复三次
- * （列 0/4/8 是模块槽）。组件槽固定排三格是刻意的：基础模块只有 1 个槽，多出来的两格由屏幕盖上「不可用槽」
- * 覆盖层，于是滚动时每行的格数恒定，格子不会跳。</p>
+ * <p>面板最多 12 条 18px 带（最少 4 条，实际条数由「终端样式」档位与窗口高度定，见屏幕类），每条带
+ * {@link #SLOTS_PER_ROW} 格存储组件槽——贴图里那一行本来就是 12 格等距（18px 一格，从 x=8 起），以前只有其中
+ * 9 格是组件格、另外 3 格留给模块图标，现在整行都作组件槽，于是贴图不必重画。</p>
  *
- * <p><b>槽位与「带」是绑定关系，与内容无关</b>：第 {@code i} 个模块槽永远在第 {@code i / 3} 条带上，槽位坐标
- * 写死在样式文档里、运行期不改（AE2 的槽位坐标在 {@code init()} 期解析一次，每帧改 {@code Slot.x/y} 会与槽的
- * 背景绘制错位）。行表里哪条带是标题行、哪条是模块行由内容决定（见 {@link TerminalRows}），屏幕只负责把用不到
- * 的那些槽隐藏起来。</p>
+ * <p><b>槽位与「带」是绑定关系，与内容无关</b>：第 {@code i} 条带的第 {@code j} 格永远在同一处坐标上，坐标写死在
+ * 样式文档里、运行期不改（AE2 的槽位坐标在 {@code init()} 期解析一次，每帧改 {@code Slot.x/y} 会与槽的背景绘制
+ * 错位）。行表里哪条带是标题行、哪条是组件行由内容决定（见 {@link TerminalRows}），屏幕只负责把用不到的那些槽
+ * 隐藏起来。</p>
  *
- * <p>每条带因此有三套槽：模块行的「模块槽 + 组件槽」与标题行的「标题图标槽」。同一时刻只有一套在用，另一套
- * 由屏幕隐藏——标题行上出现空模块格（以及模块行上出现空标题格）都很难看，而玩家也不该点到它们。</p>
+ * <p>每条带因此有两套槽：组件行的 12 个组件格与标题行的等级图标格。同一时刻只有一套在用，另一套由屏幕隐藏
+ * ——标题行上浮着 12 个空格子（以及组件行上出现一个空图标格）都很难看，而玩家也不该点到它们。</p>
  */
 public final class EnergyModuleSlotSemantics {
 
@@ -31,46 +29,38 @@ public final class EnergyModuleSlotSemantics {
     /** 面板最多显示几条带：注册的槽位数按它来，超出的部分运行时隐藏。 */
     public static final int MAX_ROWS = 12;
 
-    /** 每条带里有几个模块槽（贴图里第 1、5、9 格）。 */
-    public static final int MODULES_PER_ROW = TerminalRows.MODULES_PER_ROW;
-
-    /** 全部带上的模块槽/组件语义总数（含运行时被隐藏的那些）。 */
-    public static final int MAX_MODULE_SLOTS = MAX_ROWS * MODULES_PER_ROW;
+    /** 每条带里的组件格数。 */
+    public static final int SLOTS_PER_ROW = TerminalRows.SLOTS_PER_ROW;
 
     /**
-     * 每个模块预留的组件格数：取所有已注册等级里最多的那个。
+     * 报给原版的单格件数上限。
      *
-     * <p><b>是方法而不是常量</b>：它要读等级注册表，而注册表要到 {@code RegisterEvent} 才填好；本类的槽位语义
-     * 数组则在类加载期就建好，那一刻读到的是空表（旧写法会静默得到 0 槽）。AE2 的槽位本来就是在菜单 {@code init()}
-     * （运行期）才注册的，所以把求值推到那时是安全的。</p>
+     * <p>真实件数必须报出去：原版的左键取整格、右键取一半、shift 的搬运量都取自栈自己的数量，报 1 会让三种
+     * 操作都只搬一件（格里明明显着几十个）。但它也不能无限大——超过一叠的上限就可能被上层按「一叠」处理坏掉，
+     * 所以封顶 64；超过的那部分由屏幕自己画，屏幕也只补画超过 64 的（≤64 原版会画，重画会看出重影）。</p>
      */
-    public static int componentSlotsPerModule() {
-        return ModularCellConstants.maxComponentSlots();
-    }
+    public static final int MAX_REPORTED_COUNT = 64;
 
-    /** 模块展示槽：一格一个模块，选中它不会拿走东西（只读）。 */
-    public static final SlotSemantic[] MODULE = new SlotSemantic[MAX_MODULE_SLOTS];
+    /** 全部带上的组件格总数（含运行时被隐藏的那些）。 */
+    public static final int MAX_SLOT_COUNT = MAX_ROWS * SLOTS_PER_ROW;
 
-    /** 组件槽：每个模块三格横排。 */
-    public static final SlotSemantic[] COMPONENTS = new SlotSemantic[MAX_MODULE_SLOTS];
+    /** 存储组件槽：每条带 12 格横排（同一语义下挂 12 个槽，坐标由样式文档的 grid 排开）。 */
+    public static final SlotSemantic[] COMPONENTS = new SlotSemantic[MAX_ROWS];
 
-    /** 标题行的等级图标槽：每条带一个，与第 1 列的模块格对齐；不是标题行时隐藏。 */
+    /** 标题行的等级图标槽：每条带一个，与第 1 个组件格对齐；不是标题行时隐藏。 */
     public static final SlotSemantic[] TITLE_ICON = new SlotSemantic[MAX_ROWS];
 
     static {
-        for (int index = 0; index < MAX_MODULE_SLOTS; index++) {
+        for (int band = 0; band < MAX_ROWS; band++) {
             // 语义名要带自己的 mod id 前缀，AE2 的注册表是全局的。
-            MODULE[index] = SlotSemantics.register(AE2ModularCells.MOD_ID + ":module_" + index, false);
-            COMPONENTS[index] = SlotSemantics.register(AE2ModularCells.MOD_ID + ":module_components_" + index, false);
-        }
-        for (int row = 0; row < MAX_ROWS; row++) {
-            TITLE_ICON[row] = SlotSemantics.register(AE2ModularCells.MOD_ID + ":module_title_" + row, false);
+            COMPONENTS[band] = SlotSemantics.register(AE2ModularCells.MOD_ID + ":line_slot_" + band, false);
+            TITLE_ICON[band] = SlotSemantics.register(AE2ModularCells.MOD_ID + ":module_title_" + band, false);
         }
     }
 
-    /** 第 {@code row} 条带的模块槽语义（3 个）。 */
-    public static SlotSemantic moduleSemantic(int row, int column) {
-        return MODULE[row * MODULES_PER_ROW + column];
+    /** 第 {@code band} 条带的组件语义（那一条带上 12 个槽共用它）。 */
+    public static SlotSemantic componentSemantic(int band) {
+        return COMPONENTS[band];
     }
 
     private EnergyModuleSlotSemantics() {

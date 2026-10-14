@@ -46,19 +46,19 @@ import io.github.lounode.ae2modularcells.common.menu.EnergyModuleTerminalMenu;
  * 「表头 + N 条带 + 表尾」拼出来的——表头与表尾都是贴图切片，带是可重复的中段。表尾（玩家背包区、两条进度条、
  * 固定标签）跟着往下挪，挪的距离就是 {@link #footerDelta}。</p>
  *
- * <p><b>行分割与拼接</b>：每条带一张图，逐条贴。每条带是什么由服务端同步过来的行表（{@code menu.rowLayout}）
- * 决定：{@code T:<等级>:<模块数>} 是等级标题行（占整行的平面带 + 一个等级图标槽 + 「模块数量」文字）、
- * {@code M} 是模块行（带 12 格的槽带）、{@code -} 是行表到头（或被样式档位裁掉）。带图的选取是「行角色 × 位置」
- * 两个维度：角色决定用平面带还是槽带，位置（首/中/末）决定用哪一条边线变体——两者互不隶属，所以是 2×3 的可用
- * 组合，而不是固定搭配。</p>
+ * <p><b>行分割与拼接</b>：每条带一张图，逐条贴。每条带是什么由行表决定：{@code T:<等级短 id>} 是标题行
+ * （平面带 + 一个等级图标槽 + 「等级名 / 模块数量 / 已装配存储组件」三段文字），{@code S:<等级短 id>} 是组件行
+ * （带 12 格槽带），{@code -} 是行表到头（或被样式档位裁掉）。带图的选取是「行角色 × 位置」两个维度：角色决定
+ * 用平面带还是槽带，位置（首/中/末）决定用哪一条边线变体——两者互不隶属，所以是 2×3 的可用组合，
+ * 而不是固定搭配。</p>
  *
- * <p>每条带上有三套槽（模块槽 + 组件槽 / 标题图标槽），同一时刻只有一套在用，另一套由
- * {@link #applySlotVisibility()} 隐藏——把用不到的那一套留在界面上，玩家会看到空模块格或空标题格，也可能点到
+ * <p>每条带上两套槽（12 个组件格 / 1 个标题图标格），同一时刻只有一套在用，另一套由
+ * {@link #applySlotVisibility()} 隐藏——把用不到的那一套留在界面上，玩家会看到空图标格或空格子，也可能点到
  * 它们。</p>
  */
 public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTerminalMenu> {
 
-    private static final int MODULES_PER_ROW = EnergyModuleSlotSemantics.MODULES_PER_ROW;
+    private static final int SLOTS_PER_ROW = EnergyModuleSlotSemantics.SLOTS_PER_ROW;
     private static final int MIN_ROWS = EnergyModuleSlotSemantics.MIN_ROWS;
     private static final int MAX_ROWS = EnergyModuleSlotSemantics.MAX_ROWS;
 
@@ -66,24 +66,24 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     private static final char BAND_EMPTY = '-';
     /** 空标记的字符串形式：每帧要用好几次，定成常量免得反复 String.valueOf。 */
     private static final String EMPTY_MARK = String.valueOf(BAND_EMPTY);
-    /** 标题行的前缀：{@code T:<等级短 id>:<该组模块数>}。 */
+    /** 标题行的前缀：{@code T:<等级短 id>}。 */
     private static final String BAND_TITLE_PREFIX = "T:";
-    /** 标题标记里各段的间隔符。 */
-    private static final String MARK_SEPARATOR = ":";
-    /** 模块行。 */
-    private static final char BAND_MODULES = 'M';
+    /** 组件行的前缀：{@code S:<等级短 id>}。 */
+    private static final String BAND_SLOTS_PREFIX = "S:";
 
     /** 标题文字距图标槽左缘的缩进：图标 16px + 2px 间隔，文字就落在组件列的位置上。 */
     private static final int TITLE_TEXT_INSET_X = 18;
     /** 图标槽查不到时的退路：从带左缘算，8（图标槽在文档里的 left）+ 18。 */
     private static final int TITLE_TEXT_ICON_ONLY_X = 26;
-    /** 一条带的高亮右边界：最后一个组件格（left 170 + 16）再留 2px，不碰滚动条轨道（229 起）。
-     * 188 = 组件列 top/left 的文档坐标（170）+ 组件格宽（16）+ 2px 余量；滚动条轨道从 229 起。 */
-    private static final int TITLE_ROW_RIGHT_EDGE = 188;
+    /** 一条带在界面上能用到的最右缘：最后一格（left 206 + 16）再留 2px，不碰滚动条轨道（229 起）。 */
+    private static final int BAND_RIGHT_EDGE = 224;
     /** 标题文字距图标槽顶的下移：槽高 18、字高 9，落下 5 上下就均了。 */
     private static final int TITLE_TEXT_INSET_Y = 5;
-    /** 等级名与后面的「模块数量」之间的间隔。 */
-    private static final int TITLE_TEXT_GAP = 6;
+    /** 等级名与后面那两段之间的间隔。 */
+    private static final String TITLE_TEXT_GAP_TEXT = "  ";
+
+    /** 标题行文字的最小缩放：三段加起来顶穿面板时缩到这里为止（再小就看不清了）。 */
+    private static final float TITLE_MIN_SCALE = 0.55F;
 
     /** 数值右缘留白：留一点，别贴着面板边框。 */
     private static final int BAR_VALUE_RIGHT_MARGIN = 12;
@@ -102,7 +102,6 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     private final Blitter rowSlotsMiddle;
     private final Blitter rowSlotsBottom;
     private final Blitter tableFooter;
-    private final Blitter unavailableSlot;
     private final Blitter componentSlot;
     private final Blitter storageBar;
     private final Blitter inputBar;
@@ -159,18 +158,25 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     /** 上一次用过的结构快照；变了才重排。 */
     private String lastSnapshot = "";
 
-    /** 快照未到时的过渡态：这一帧按「全是模块带」铺满，不隐藏任何带（见 refreshLocalRows）。 */
-    private boolean snapshotPending;
-
     /** 上一次同步给服务端的本地行数；变了才要一次内容重同步（见 updateBeforeRender）。 */
     private int syncedRows = -1;
 
     private final String[] bandMarks = new String[MAX_ROWS];
-
-    /** 已经为哪一份行表要过一次服务端重同步；行表变了就要一次（开屏那次是必须的，见 updateBeforeRender）。 */
-    private String resyncedLayout = "";
+    /** 每条带是不是标题行。光看 {@link #bandTiers} 分不出：组件行也属于某一档。 */
+    private final boolean[] bandTitleFlags = new boolean[MAX_ROWS];
     private final EnergyCellTier[] bandTiers = new EnergyCellTier[MAX_ROWS];
     private final int[] bandCounts = new int[MAX_ROWS];
+
+    /** 标题行那两段文字的数值：已装配组件数 / 装配名额（名额 = 该档模块数 × 该档每块槽位数）。 */
+    private final int[] bandAssembled = new int[MAX_ROWS];
+    private final int[] bandCapacity = new int[MAX_ROWS];
+
+    /** 本地行表的两个输入：每档模块数与已装件数，按固定位号索引；由同步快照算出来。 */
+    private int[] tierModuleCounts = new int[0];
+    private int[] tierAssembled = new int[0];
+
+    /** 每个组件格已装的件数（下标 = 带 × 12 + 列），由 slotCountSnapshot 解析。 */
+    private int[] slotCounts = new int[0];
 
     /** 上一次应用过的隐藏状态，按语义记：没变就不调 AE2（它会触发一次全量重摆）。 */
     private final Map<SlotSemantic, Boolean> appliedHidden = new HashMap<>();
@@ -191,7 +197,6 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         this.rowSlotsMiddle = style.getImage("rowSlotsMiddle");
         this.rowSlotsBottom = style.getImage("rowSlotsBottom");
         this.tableFooter = style.getImage("tableFooter");
-        this.unavailableSlot = style.getImage("unavailableSlot");
         this.componentSlot = style.getImage("componentSlot");
         this.storageBar = style.getImage("storageBar");
         this.inputBar = style.getImage("inputBar");
@@ -305,11 +310,12 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     /**
      * 按行表把用不到的槽藏起来，用得到的放出来。
      *
-     * <p>规则只有三条：超出可见条数的带全部藏；标题行藏「模块槽 + 组件槽」、放「标题图标槽」；模块行反过来。
-     * 每帧算一次期望状态，但只有真变了才调 AE2 的 {@code setSlotsHidden}（它会触发一次全量重摆）。</p>
+     * <p>规则只有两条：超出可见条数的带全部藏；标题行藏「组件槽」、放「标题图标槽」，组件行反过来。每帧算一次
+     * 期望状态，但只有真变了才调 AE2 的 {@code setSlotsHidden}（它会触发一次全量重摆）。</p>
      *
-     * <p><b>行表没到手时什么都不动</b>：首帧可能先渲染、后收同步包，那时若当成「一条带都没有」把整面板的槽
-     * 搬到屏外，就只有在条数或行表再次变化时才会恢复——表现出来正是「开屏是空的，拖一下滚动条才出现」。</p>
+     * <p><b>快照没到手时行表是空的</b>，于是所有槽都被藏起来；{@code updateBeforeRender} 会在行数变化时向服务端
+     * 要一次重同步（{@code setRowOffset}），快照到手后立刻恢复——这正是「开屏是空的，拖一下滚动条才出现」那条
+     * 老毛病的修法。</p>
      */
     private void applySlotVisibility() {
         // 行表每帧只解一次（绘制/标题/覆盖层/选组都读它）；这里先保证它已解——本方法在 init() 里也会被调到，
@@ -318,11 +324,7 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         for (int band = 0; band < MAX_ROWS; band++) {
             boolean visible = band < this.bands && !EMPTY_MARK.equals(bandMark(band));
             boolean title = visible && bandIsTitle(band);
-            for (int column = 0; column < MODULES_PER_ROW; column++) {
-                int index = band * MODULES_PER_ROW + column;
-                applyHidden(EnergyModuleSlotSemantics.MODULE[index], !visible || title);
-                applyHidden(EnergyModuleSlotSemantics.COMPONENTS[index], !visible || title);
-            }
+            applyHidden(EnergyModuleSlotSemantics.componentSemantic(band), !visible || title);
             applyHidden(EnergyModuleSlotSemantics.TITLE_ICON[band], !title);
         }
 
@@ -433,33 +435,19 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     }
 
     /**
-     * 组件槽的两层状态贴图。
+     * 组件行那 12 格的「可放」覆盖层。
      *
-     * <p>可用槽盖「存储组件槽」、模块给不出的那几格盖「不可用槽」——基础模块只有 1 个组件槽，它右边两格就是
-     * 摆样子给玩家看「这里本来可以有两格」的。落点直接用 {@code slot.x/slot.y}：那本来就是 16×16 内容区的
-     * 左上角，覆盖层切片也是 16×16。</p>
+     * <p>聚合视图下每一格都可用（一格一种组件，满 12 种就往下一行延伸），所以不再有「不可用槽」那一层——
+     * 以前是「模块只给得出 1~2 格、多出来的盖暗格」，而格子的数量现在由种类数决定，不由某一块决定。</p>
      */
     private void drawComponentSlotOverlays(GuiGraphics guiGraphics, int offsetX, int offsetY) {
-        var display = getMenu().moduleDisplay();
         for (int band = 0; band < this.bands; band++) {
-            // 标题行（与行表到头的那条空带）上没有槽位：一条覆盖层也不铺，否则整条带上会浮出 12 个「不可用」暗格。
+            // 标题行（与行表到头的那条空带）上没有组件槽：一条覆盖层也不铺，否则整条带上会浮出 12 个暗格。
             if (bandIsTitle(band) || bandMark(band).equals(EMPTY_MARK)) {
                 continue;
             }
-            for (int column = 0; column < MODULES_PER_ROW; column++) {
-                int module = band * MODULES_PER_ROW + column;
-                var tier = tierOfDisplay(display.getStackInSlot(module));
-                if (tier == null) {
-                    // 组末尾不满 3 个模块的那几列：没有模块就没槽，不铺任何覆盖层。
-                    continue;
-                }
-                var slots = getMenu().getSlots(EnergyModuleSlotSemantics.COMPONENTS[module]);
-                for (int part = 0; part < slots.size(); part++) {
-                    var slot = slots.get(part);
-                    boolean usable = part < tier.componentSlots();
-                    var overlay = usable ? this.componentSlot : this.unavailableSlot;
-                    overlay.copy().dest(offsetX + slot.x, offsetY + slot.y).blit(guiGraphics);
-                }
+            for (var slot : getMenu().getSlots(EnergyModuleSlotSemantics.componentSemantic(band))) {
+                this.componentSlot.copy().dest(offsetX + slot.x, offsetY + slot.y).blit(guiGraphics);
             }
         }
     }
@@ -486,20 +474,70 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
                 // 右边界用「一条带自己的右缘」（最后一个组件格 + 组件列宽），不能用 imageWidth：
                 // 面板宽 249，而带的有效区到 237，再往右是滚动条轨道（229 起）。
                 int highlight = (SELECTION_ALPHA << 24) | (this.selectionColor & 0xFFFFFF);
-                guiGraphics.fill(2, rowY + 1, TITLE_ROW_RIGHT_EDGE, rowY + this.bandHeight - 1,
+                guiGraphics.fill(2, rowY + 1, BAND_RIGHT_EDGE, rowY + this.bandHeight - 1,
                         highlight);
             }
-            // 文字位置相对「等级图标槽」算，不跟带几何挂钩：图标由 AE2 自己画（那是槽里的物品），
-            // 名字从图标右侧起，名字后面接该组的模块数量。
+            // 文字位置相对「等级图标槽」算，不跟带几何挂钩：图标由 AE2 自己画（那是槽里的物品）。
+            // 三段拼成一行：等级名、该档模块数、已装配存储组件——最宽的一档会顶穿面板，所以交给 drawTitleLine 缩。
             int color = selected ? this.selectionColor : this.textColor;
-            Component name = tierName(title);
-            guiGraphics.drawString(font, name, textX, textY, color, false);
-            guiGraphics.drawString(font,
-                    Component.translatable("gui.ae2modularcells.tier_group_count", this.bandCounts[band]),
-                    textX + font.width(name) + TITLE_TEXT_GAP, textY, color, false);
+            var line = Component.empty()
+                    .append(tierName(title))
+                    .append(TITLE_TEXT_GAP_TEXT)
+                    .append(Component.translatable("gui.ae2modularcells.tier_group_count", this.bandCounts[band]))
+                    .append(TITLE_TEXT_GAP_TEXT)
+                    .append(Component.translatable("gui.ae2modularcells.tier_assembly_count",
+                            this.bandAssembled[band], this.bandCapacity[band]));
+            drawTitleLine(guiGraphics, line, textX, textY, color);
         }
 
+        drawComponentCounts(guiGraphics);
         drawBarValues(guiGraphics);
+    }
+
+    /**
+     * 组件格里的件数。
+     *
+     * <p>原版会把栈的数量画到 64 为止（菜单把真实件数封顶到 {@code MAX_REPORTED_COUNT} 才报出去），所以超过
+     * 那一档就得自己补上——否则一个装了 81 件的格子会写成 64，而玩家是照这个数判断装配量的。位置与样式跟着
+     * 原版的装饰渲染来（右下角、白字带阴影），才看不出是两处画的。</p>
+     */
+    private void drawComponentCounts(GuiGraphics guiGraphics) {
+        for (int band = 0; band < this.bands; band++) {
+            if (bandIsTitle(band) || bandMark(band).equals(EMPTY_MARK)) {
+                continue;
+            }
+            for (var slot : getMenu().getSlots(EnergyModuleSlotSemantics.componentSemantic(band))) {
+                int count = slot.index >= 0 && slot.index < this.slotCounts.length ? this.slotCounts[slot.index] : 0;
+                if (count <= EnergyModuleSlotSemantics.MAX_REPORTED_COUNT) {
+                    // 一叠以内原版自己会画，不重复画（两处画同一个数会看得出重影）。
+                    continue;
+                }
+                String text = String.valueOf(count);
+                guiGraphics.drawString(font, text, slot.x + 17 - font.width(text), slot.y + 9, 0xFFFFFF, true);
+            }
+        }
+    }
+
+    /**
+     * 标题行那一行文字（等级名 / 模块数量 / 已装配存储组件）。
+     *
+     * <p>三段拼成一行画：超密档的名字最长，再叠上后两段就可能顶穿面板，所以放不下时整行按比例缩小——与右下
+     * 两条数值同一套办法，宁可小一点也不要溢出或被裁掉。</p>
+     */
+    private void drawTitleLine(GuiGraphics guiGraphics, Component line, int x, int y, int color) {
+        String text = line.getString();
+        int available = Math.max(1, BAND_RIGHT_EDGE - x);
+        int width = font.width(text);
+        float scale = width <= available ? 1.0F : Math.max(TITLE_MIN_SCALE, (float) available / width);
+        if (scale >= 1.0F) {
+            guiGraphics.drawString(font, line, x, y, color, false);
+            return;
+        }
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(x, y, 0F);
+        guiGraphics.pose().scale(scale, scale, 1F);
+        guiGraphics.drawString(font, line, 0, 0, color, false);
+        guiGraphics.pose().popPose();
     }
 
     /** 第 {@code band} 条带的等级图标槽（标题行才有）；拿不到给 {@code null}。 */
@@ -531,6 +569,9 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
     @Nullable
     private String titleTierAt(double mouseX, double mouseY) {
         for (int band = 0; band < this.bands; band++) {
+            if (!bandIsTitle(band)) {
+                continue;
+            }
             var title = bandTiers[band];
             if (title == null) {
                 continue;
@@ -549,7 +590,7 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
 
     /** 这条带是不是标题行。 */
     private boolean bandIsTitle(int band) {
-        return bandTiers[band] != null;
+        return band >= 0 && band < MAX_ROWS && bandTitleFlags[band];
     }
 
     /** 第 {@code band} 条带的标记，本帧已在 {@link #updateBeforeRender} 解好；越界或还没解给空带。 */
@@ -568,89 +609,103 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
      * 两侧本就同源，真不同步时会在界面上看出来，而不是崩掉。</p>
      */
     /**
-     * 用服务端下发的**结构快照**在本地排出整张行表（照 AE2 样板访问终端：行表是客户端的事）。
+     * 用三份快照在本地排出整张行表（照 AE2 样板访问终端：行表是客户端的事）。
      *
-     * <p>快照是「按遍历序的等级短 id 序列」（{@code EnergyModuleTerminalMenu#structureSnapshot}），解析后交给
-     * 纯函数 {@link TerminalRows#build}——分组、标题行、每行几个模块全在本地算，不再解析服务端拼好的行表字符串，
-     * 也就不再有「等包那一帧」的补丁。</p>
+     * <p>快照是三份：{@code structureSnapshot}（按遍历序的等级短 id 序列）、{@code kindSnapshot}（每档组件种类数）、
+     * {@code assemblySnapshot}（每档件数）。解析后交给纯函数 {@link TerminalRows#build}——分组、标题行、该档几行
+     * 全在本地算，不再解析服务端拼好的行表字符串。</p>
      *
-     * <p>快照还没到的那一帧走兜底：**先按全模块行排**（不带标题带），到了再重排一次。这样开屏第一帧就有正确的
-     * 模块格，不会出现「空屏、要等一次画面更新」。</p>
+     * <p>快照还没到的那一帧行表是空的（没有带可显示），{@code updateBeforeRender} 会替它要一次重同步。</p>
      */
     private void refreshLocalRows() {
-        String snapshot = getMenu().structureSnapshot;
-        if (snapshot == null) {
-            snapshot = "";
+        String structure = getMenu().structureSnapshot;
+        if (structure == null) {
+            structure = "";
         }
-        if (!snapshot.equals(this.lastSnapshot)) {
-            this.lastSnapshot = snapshot;
+        String kindsSnapshot = getMenu().kindSnapshot;
+        if (kindsSnapshot == null) {
+            kindsSnapshot = "";
+        }
+        String assembledSnapshot = getMenu().assemblySnapshot;
+        if (assembledSnapshot == null) {
+            assembledSnapshot = "";
+        }
+        String slotCountSnapshot = getMenu().slotCountSnapshot;
+        if (slotCountSnapshot == null) {
+            slotCountSnapshot = "";
+        }
+        // 快照任意一份变了就要重排：种类数变了行数就变，件数变了标题与格内数字就变。
+        String marker = structure + '|' + kindsSnapshot + '|' + assembledSnapshot + '|' + slotCountSnapshot;
+        if (!marker.equals(this.lastSnapshot)) {
+            this.lastSnapshot = marker;
             this.localRows.clear();
-            if (snapshot.isEmpty()) {
-                int modules = Math.max(0, getMenu().totalModules);
-                for (int first = 0; first < modules; first += MODULES_PER_ROW) {
-                    int count = Math.min(MODULES_PER_ROW, modules - first);
-                    var indices = new int[count];
-                    for (int column = 0; column < count; column++) {
-                        indices[column] = first + column;
-                    }
-                    this.localRows.add(new TerminalRows.Row(null, first, count, indices));
+            var tiers = ModularCellTiers.all();
+            // 与 buildStructureSnapshot 对应的一字符制：a + 固定位号，? 表示这一块拿不到等级。
+            int[] moduleCounts = new int[tiers.size()];
+            for (int index = 0; index < structure.length(); index++) {
+                int code = structure.charAt(index) - 97;
+                if (code >= 0 && code < moduleCounts.length) {
+                    moduleCounts[code]++;
                 }
-            } else {
-                // 与 buildStructureSnapshot 对应的一字符制：a + 固定位号，? 表示这一块拿不到等级。
-                // 取一次 all() 再按下标查：它已按固定位号排序且位号连续，与 byIndex 等价，但不必每格都重排一次
-                // 注册表（快照最长 4096 格，每格一次 stream+sort 会白卡客户端）。
-                var values = ModularCellTiers.all();
-                var tiers = new EnergyCellTier[snapshot.length()];
-                for (int index = 0; index < snapshot.length(); index++) {
-                    int code = snapshot.charAt(index) - 97;
-                    tiers[index] = code >= 0 && code < values.size() ? values.get(code) : null;
-                }
-                TerminalRows.build(tiers.length, index -> tiers[index], this.localRows);
             }
+            this.tierModuleCounts = moduleCounts;
+            this.tierAssembled = parseCounts(assembledSnapshot, tiers.size());
+            int[] kinds = parseCounts(kindsSnapshot, tiers.size());
+            TerminalRows.build(index -> moduleCounts[index], index -> kinds[index], this.localRows);
+            this.slotCounts = parseCounts(slotCountSnapshot, EnergyModuleSlotSemantics.MAX_SLOT_COUNT);
             this.appliedHidden.clear();
         }
-        // 快照还没到（且结构非空）：这一帧**不隐藏任何带**——服务端已经按它自己的行表往窗口里填了内容，
-        // 本地若按「每行 3 个模块」少算了几条带、把尾部带判成空带隐藏，就会出现「看不见但能写入」的组件格。
-        // 铺满模块带只是过渡态，快照到达后立刻重排（appliedHidden 已在上面清掉）。
-        this.snapshotPending = this.lastSnapshot.isEmpty() && getMenu().totalModules > 0;
-        if (this.snapshotPending) {
-            for (int band = 0; band < MAX_ROWS; band++) {
-                this.bandTiers[band] = null;
-                this.bandCounts[band] = 0;
-                this.bandMarks[band] = String.valueOf(BAND_MODULES);
-            }
-            return;
-        }
-        // 本地行表 → 这一屏三组带标记。下游（绘制、槽位可见性、标题文字）读的就是这三组数组，口径与服务端行表一致。
+        // 本地行表 → 这一屏的带标记与三段数值。下游（绘制、槽位可见性、标题文字、覆盖层）读的就是这几组数组，
+        // 口径与服务端行表一致。
+        var tiers = ModularCellTiers.all();
         for (int band = 0; band < MAX_ROWS; band++) {
             int rowIndex = getMenu().rowOffset + band;
             var row = rowIndex >= 0 && rowIndex < this.localRows.size() ? this.localRows.get(rowIndex) : null;
-            this.bandTiers[band] = row == null ? null : row.title();
-            // 标题行显示的是「这一组有几块」，不是这一行自己的模块数（标题行恒为 0，直接用会渲染成
-            // 「模块数量：0」）；模块行的这个值没人读，维持原义。
-            this.bandCounts[band] = row == null ? 0
-                    : (row.isTitle() ? groupModuleCount(rowIndex) : row.moduleCount());
+            boolean title = row != null && row.title();
+            this.bandTitleFlags[band] = title;
+            this.bandTiers[band] = row == null ? null : row.tier();
+            int slotIndex = row == null ? -1 : ModularCellTiers.indexOf(row.tier());
+            int modules = slotIndex >= 0 && slotIndex < this.tierModuleCounts.length
+                    ? this.tierModuleCounts[slotIndex]
+                    : 0;
+            this.bandCounts[band] = modules;
+            this.bandAssembled[band] = slotIndex >= 0 && slotIndex < this.tierAssembled.length
+                    ? this.tierAssembled[slotIndex]
+                    : 0;
+            // 名额 = 该档模块数 × 该档每块槽位数。
+            this.bandCapacity[band] = slotIndex >= 0 && slotIndex < tiers.size()
+                    ? modules * tiers.get(slotIndex).componentSlots()
+                    : 0;
             if (row == null) {
                 this.bandMarks[band] = EMPTY_MARK;
-            } else if (row.isTitle()) {
-                this.bandMarks[band] = BAND_TITLE_PREFIX + row.title().id() + MARK_SEPARATOR + groupModuleCount(rowIndex);
+            } else if (title) {
+                this.bandMarks[band] = BAND_TITLE_PREFIX + row.tier().id();
             } else {
-                this.bandMarks[band] = String.valueOf(BAND_MODULES);
+                this.bandMarks[band] = BAND_SLOTS_PREFIX + row.tier().id();
             }
         }
     }
 
-    /** 本地行表里第 {@code titleRowIndex} 条标题行所属组的模块数（标题后面那几条模块行之和）。 */
-    private int groupModuleCount(int titleRowIndex) {
-        int count = 0;
-        for (int index = titleRowIndex + 1; index < this.localRows.size(); index++) {
-            var row = this.localRows.get(index);
-            if (row.isTitle()) {
-                break;
-            }
-            count += row.moduleCount();
+    /**
+     * 解析「逗号分隔的非负整数」快照。
+     *
+     * <p>长度不足或某段不是数字就当 0：同步字符串被截断或版本错位时，屏幕上少显示一个数字，远比抛异常把玩家
+     * 踢下线好。两侧本就同源，真不同步时在界面上看得出来，而不至于崩掉。</p>
+     */
+    private static int[] parseCounts(String snapshot, int size) {
+        int[] result = new int[size];
+        if (snapshot.isEmpty()) {
+            return result;
         }
-        return count;
+        var parts = snapshot.split(",");
+        for (int index = 0; index < Math.min(parts.length, size); index++) {
+            try {
+                result[index] = Math.max(0, Integer.parseInt(parts[index].trim()));
+            } catch (NumberFormatException ignored) {
+                result[index] = 0;
+            }
+        }
+        return result;
     }
 
     /**
@@ -770,16 +825,6 @@ public class EnergyModuleTerminalScreen extends AEBaseScreen<EnergyModuleTermina
         if (wanted != getMenu().rowOffset) {
             getMenu().setRowOffset(wanted);
         }
-    }
-
-    /** 展示槽里那张方块物品反推等级；空槽或不是模块方块时给 null。 */
-    @Nullable
-    private static EnergyCellTier tierOfDisplay(ItemStack displayStack) {
-        if (displayStack.getItem() instanceof BlockItem blockItem
-                && blockItem.getBlock() instanceof EnergyCellModuleBlock module) {
-            return module.tier();
-        }
-        return null;
     }
 
     /** 等级短 id（同步过来的那个）换成可翻译的名字；认不出来就给空，界面不因为一个陌生 id 崩掉。 */

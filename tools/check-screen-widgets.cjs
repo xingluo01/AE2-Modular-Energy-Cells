@@ -1,4 +1,4 @@
-// 屏幕样式自检：屏幕类按 id 取的控件/贴图，以及按编号批量注册的槽位语义（module_N 等），
+// 屏幕样式自检：屏幕类按 id 取的控件/贴图，以及按编号批量注册的槽位语义（line_slot_N 等），
 // 样式文档都必顶声明。
 //
 // 为什么需要它：AE2 的 ScreenStyle.getWidget(id) 与 getImage(id) 在文档里找不到那个键时
@@ -252,11 +252,14 @@ const refs = new Map();
 })(clientJavaDir);
 
 // 批量注册的槽位语义：`SlotSemantics.register(<modid> + ":<前缀>_" + ...)`——取出前缀，再拿去对文档里的
-// `slots` 条目。条数不用猜：MAX_ROWS 与 MODULES_PER_ROW 在本仓是字面量常量，扫到就用；**同一个名字扫到两个
-// 不同值就不当字面量**（宁可记「无法判定」，也不能拿最后一个值去核）。
+// `slots` 条目。条数不用猜：MAX_ROWS 在本仓是字面量常量，扫到就用；**同一个名字扫到两个不同值就不当字面量**
+// （宁可记「无法判定」，也不能拿最后一个值去核）。
+//
+// 一档一个语义：组件带 12 个槽共用 `line_slot_<档号>`，所以家族长度就是条带数，与「每带几格」无关
+// （每带几格由样式文档的 grid 决定，这里不核）。
 const slotFamilies = new Set();
 const maxRowsValues = new Set();
-const modulesPerRowValues = new Set();
+const modIdValues = new Set();
 (function scanSemantics(dir) {
   if (!fs.existsSync(dir)) return;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -273,13 +276,13 @@ const modulesPerRowValues = new Set();
       slotFamilies.add(m[1]);
     }
     for (const m of src.matchAll(/\bMAX_ROWS\s*=\s*(\d+)\s*;/g)) maxRowsValues.add(Number(m[1]));
-    for (const m of src.matchAll(/\bMODULES_PER_ROW\s*=\s*(\d+)\s*;/g)) {
-      modulesPerRowValues.add(Number(m[1]));
-    }
+    for (const m of src.matchAll(/\bMOD_ID\s*=\s*"([^"]+)"/g)) modIdValues.add(m[1]);
   }
 })(mainJavaDir);
 const declaredMaxRows = maxRowsValues.size === 1 ? [...maxRowsValues][0] : null;
-const declaredModulesPerRow = modulesPerRowValues.size === 1 ? [...modulesPerRowValues][0] : null;
+// 反向核对要看「哪些键属于本模组」：硬编码前缀会在 modid 改名时静默失效，所以从源码里扫。
+// 同一个名字扫到两个不同值就不当常量（宁可退回 null，也不拿错的那个去核）。
+const declaredModId = modIdValues.size === 1 ? [...modIdValues][0] : null;
 
 /**
  * 槽位家族核对。返回 { fails, oks, und, skipped }：skipped 表示一个家族都没扫到（调用方必须记「无法判定」，
@@ -287,14 +290,28 @@ const declaredModulesPerRow = modulesPerRowValues.size === 1 ? [...modulesPerRow
  */
 function checkSlotFamilies(haveS) {
   if (!slotFamilies.size) return { fails: [], oks: [], und: 0, skipped: true };
-  if (declaredMaxRows === null || declaredModulesPerRow === null) {
+  if (declaredMaxRows === null || declaredModId === null) {
     return { fails: [], oks: [], und: slotFamilies.size, skipped: false };
   }
   const fails = [];
   const oks = [];
+
+  // 反向核对：文档里声明的键必须在代码里注册过。AE2 的 positionSlots 对 style 里**每个**键调
+  // SlotSemantics.getOrThrow，多出来的键会直接抛在 init() 里（终端一打开就把玩家踢下线），而正向核对查不出
+  // ——一次改版漏删旧语义就是这么漏过去的（代码只用了新家族，文档里旧家族还在）。
+  // 前缀从源码扫（declaredModId）；扫不到就不核（上面已经把它归到「无法判定」）。
+  const known = new Set();
   for (const family of slotFamilies) {
-    const isTitle = family.includes('title');
-    const count = isTitle ? declaredMaxRows : declaredMaxRows * declaredModulesPerRow;
+    for (let i = 0; i < declaredMaxRows; i += 1) known.add(`${declaredModId}:${family}_${i}`);
+  }
+  for (const key of haveS) {
+    if (!key.startsWith(`${declaredModId}:`)) continue;
+    if (!known.has(key)) {
+      fails.push(`槽位语义 "${key}": 样式文档声明了它，但代码里没有注册（AE2 会抛 getOrThrow）`);
+    }
+  }
+  for (const family of slotFamilies) {
+    const count = declaredMaxRows;
     // 严格按「家族名_编号」结尾匹配：不能用 includes，否则 module_ 会把 module_components_35 也算进来
     // （编号对得上，漏声明就被掩盖了）。
     const pattern = new RegExp(':' + family + '_(\\d+)$');
@@ -307,8 +324,7 @@ function checkSlotFamilies(haveS) {
     for (let i = 0; i < count; i += 1) if (!nums.includes(i)) gaps.push(i);
     if (gaps.length) {
       fails.push(
-        `槽位语义 "${family}": 代码里可用 0..${count - 1}` +
-          `（MAX_ROWS=${declaredMaxRows}、MODULES_PER_ROW=${declaredModulesPerRow}），` +
+        `槽位语义 "${family}": 代码里可用 0..${count - 1}（MAX_ROWS=${declaredMaxRows}），` +
           `本样式文档的 slots 里缺 ${gaps.map((i) => family + '_' + i).join(', ')}`,
       );
     } else {
@@ -394,7 +410,7 @@ for (const [screen, { widgets: wantW, images: wantI, dynamic, usesSlotSemantics 
       console.log(`?    ${screen} -> ${styleName}: 用了槽位语义但代码里一个注册点都没扫到，无法判定`);
     } else if (outcome.und) {
       undecidable += outcome.und;
-      console.log('  （槽位语义的条数无法判定：MAX_ROWS / MODULES_PER_ROW 不是字面量常量）');
+      console.log('  （槽位语义的条数无法判定：MAX_ROWS 不是字面量常量）');
     } else {
       slotChecks += 1;
       for (const msg of outcome.fails) {
@@ -414,8 +430,10 @@ for (const [screen, { widgets: wantW, images: wantI, dynamic, usesSlotSemantics 
   }
 }
 
-// 槽位语义的条数核对：代码里能用到 module_0..N（N = MAX_ROWS × MODULES_PER_ROW - 1）、
-// module_components_0..N、module_title_0..MAX_ROWS-1，文档一条不漏才给得上坐标
+// 槽位语义的条数核对（两个方向）：
+// 正向：代码里能用到 line_slot_0..MAX_ROWS-1 与 module_title_0..MAX_ROWS-1，文档一条不漏才给得上坐标
+// （2026 这轮的 TALL/FULL 档位就吃过这个亏：文档只写了 6 条带，第 7 条起图标与模块行全错位）。
+// 反向：文档里声明的键必须都在注册表里（多一个键 AE2 就抛 getOrThrow，终端开屏即断）。
 // （2026 这轮的 TALL/FULL 档位就吃过这个亏：文档只写了 6 条带，第 7 条起图标与模块行全错位）。
 // 核对对象是「本屏自己那份样式文档（含 includes）」的 slots，不用全局集合：别的文档里同名键会掩盖本文件的缺失。
 if (slotChecks === 0 && slotFamilies.size && !slotReferenced) {

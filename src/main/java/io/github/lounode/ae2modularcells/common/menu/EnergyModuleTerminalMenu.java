@@ -2,7 +2,11 @@ package io.github.lounode.ae2modularcells.common.menu;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -10,7 +14,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
@@ -35,11 +39,16 @@ import io.github.lounode.ae2modularcells.common.logic.TerminalRows;
 /**
  * 模块管理终端：右键任意一块模块打开，显示<b>它所在那一整段结构</b>里的模块。
  *
- * <p>面板只有 6 条 18px 带，而结构最大 4096 块，所以窗口是滑动的。滑动粒度是<b>行</b>：行表按等级分组
- * （每档一条标题行 + 若干模块行，每行 3 个模块），见 {@link TerminalRows}。窗口里只有
- * 最多 {@link EnergyModuleSlotSemantics#MAX_MODULE_SLOTS} 个模块槽与它们的组件槽，滑动只改「窗口对准哪几行」，
+ * <p>面板只有 4~12 条 18px 带，而结构最大 4096 块，所以窗口是滑动的。滑动粒度是<b>行</b>：行表按等级分组
+ * （每档一条标题行 + 若干组件行），见 {@link TerminalRows}。窗口里最多
+ * {@link EnergyModuleSlotSemantics#MAX_SLOT_COUNT} 个组件格与每条带一个等级图标格，滑动只改「窗口对准哪几行」，
  * 不动槽位坐标——AE2 的槽位坐标在 {@code init()} 期只解析一次，每帧改 {@code Slot.x/y} 会与可选槽的背景绘制
  * 错位（见 {@code docs/ARCHITECTURE.md} 指出的那条口径）。</p>
+ *
+ * <p><b>组件格是「档 × 组件类型」的聚合视图</b>：底层数据没有变（组件仍逐个存在各模块自己的 1/2/3 个槽里，
+ * 容量仍逐块计），变的是玩家看到的样子——一档共用一行 12 格，一种组件占一格（同种可堆叠，格内显示件数），
+ * 12 格占满就往下一行延伸，一档总共能装多少件仍由「该档模块数 × 该档每块槽位数」封顶。放入时不必挑是哪一块，
+ * 本类自己把新组件摊到该档各模块的空槽上（与手持组件右键方块走的 {@code installComponent} 同一套优先序）。</p>
  *
  * <p>两侧的数据来源不同：服务端从方块实体现取（权威），客户端只有菜单同步过来的那份。所以两个槽位用的库存
  * 在客户端各自留一份镜像——同步写进来的栈会落到镜像里，读出来的也是镜像；服务端一侧则直连方块实体。</p>
@@ -56,9 +65,12 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             .buildUnregistered(
                     ResourceLocation.fromNamespaceAndPath(AE2ModularCells.MOD_ID, "energy_module_terminal"));
 
-    private static final int MODULES_PER_ROW = EnergyModuleSlotSemantics.MODULES_PER_ROW;
+    private static final int SLOTS_PER_ROW = EnergyModuleSlotSemantics.SLOTS_PER_ROW;
     private static final int MAX_ROWS = EnergyModuleSlotSemantics.MAX_ROWS;
-    private static final int MAX_MODULE_SLOTS = EnergyModuleSlotSemantics.MAX_MODULE_SLOTS;
+    private static final int MAX_SLOT_COUNT = EnergyModuleSlotSemantics.MAX_SLOT_COUNT;
+
+    /** 报给原版的单格件数上限：见 {@link EnergyModuleSlotSemantics#MAX_REPORTED_COUNT}。 */
+    private static final int MAX_REPORTED_COUNT = EnergyModuleSlotSemantics.MAX_REPORTED_COUNT;
 
     /** 客户端 → 服务端：把窗口滑到第几行。名字即协议，不许改。 */
     private static final String ACTION_SET_VISIBLE_ROWS = "setVisibleRows";
@@ -67,17 +79,23 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
 
     private final EnergyCellModuleBlockEntity host;
 
-    /**
-     * 窗口里当前可见的模块，下标 = {@code 行 * 3 + 列}；标题行或组末尾的空位是 {@code null}。
-     *
-     * <p>允许 {@code null} 是刻意的：窗口是一条带一条带对齐的，空位必须占住下标，否则模块会随着前面空位
-     * 多少在整个面板里左右漂浮。</p>
-     */
-    private final List<EnergyCellModuleBlockEntity> visible = new ArrayList<>();
+    /** 当前窗口里每条带对应的行；空带是 {@code null}。组件槽的读路径、标题文字、选中高亮全靠它。 */
+    private final TerminalRows.Row[] bandRows = new TerminalRows.Row[MAX_ROWS];
 
-    private final ModuleDisplayInventory moduleDisplay = new ModuleDisplayInventory();
+    /**
+     * 每档已装组件的聚合：类型表（按量级升序）+ 每种的件数，键是等级 id。
+     *
+     * <p>随行表重建（见 {@link #fillWindow}），本拍内供组件槽的读路径反复使用。不能每次问都扫一遍结构：
+     * 144 个槽每拍都会被广播问到，而一段 16³ 的结构有 4096 块。</p>
+     */
+    private final Map<String, List<ComponentKind>> kindsByTier = new HashMap<>();
+
     private final ModuleComponentInventory moduleComponents = new ModuleComponentInventory();
     private final ModuleTitleInventory moduleTitles = new ModuleTitleInventory();
+
+    /** 一种已装组件：代表栈（件数恒为 1，真实件数由屏幕画）+ 件数。 */
+    private record ComponentKind(ItemStack stack, int count) {
+    }
 
     private int lastRefreshedOffset = Integer.MIN_VALUE;
     @Nullable
@@ -125,12 +143,12 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     public int totalRows = 1;
 
     /**
-     * 窗口里 6 条带各自是什么，逗号分隔，一条一个标记：
+     * 窗口里每条带各自是什么，逗号分隔，一条一个标记：
      *
      * <pre>
-     * T:basic:27  标题行：这一档的短 id + 这一组里的模块数
-     * M           模块行（内容看对应的模块槽）
-     * -           行表到头了，或超出当前可见条数（这一条带空着）
+     * T:basic   标题行：这一档的短 id
+     * S:basic   组件行：它属于哪一档
+     * -         行表到头了，或超出当前可见条数（这一条带空着）
      * </pre>
      *
      * <p>名字即协议：屏幕靠它决定每条带贴哪一张图、要不要写标题。状态跟着行表走，不改名字、不复用。</p>
@@ -167,19 +185,42 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     @GuiSync(74)
     public String structureSnapshot = "";
 
+    /**
+     * 每档已装的组件种类数，逗号分隔、按固定位号顺序（与 {@link ModularCellTiers#all()} 同序）。
+     *
+     * <p>客户端拿它——而不是从槽内容反推——就能排出整张行表。从槽反推会自相矛盾：格子摆在哪里由行表决定，
+     * 而行表又要先知道有几格。</p>
+     */
+    @GuiSync(75)
+    public String kindSnapshot = "";
+
+    /**
+     * 每档已装组件的<b>件数</b>（同种算多件），逗号分隔、与 {@link #kindSnapshot} 同序。
+     *
+     * <p>标题行要写「已装配 a / b」：a 是件数，不是种类数，所以不能从 {@link #kindSnapshot} 反推。</p>
+     */
+    @GuiSync(76)
+    public String assemblySnapshot = "";
+
+    /**
+     * 每个组件格已装的件数，逗号分隔（下标 = {@code 带 × 12 + 列}，与槽位线性下标同序）。
+     *
+     * <p>屏幕用它画格内数字。原版只会把栈的数量画到 {@link #MAX_REPORTED_COUNT}，超过的得自己补上，否则玩家
+     * 看到的装配量是错的。</p>
+     */
+    @GuiSync(77)
+    public String slotCountSnapshot = "";
+
     public EnergyModuleTerminalMenu(int id, Inventory playerInventory, EnergyCellModuleBlockEntity host) {
         super(TYPE, id, playerInventory, host);
         this.host = host;
 
         // 槽位按最大条数一次性建完（不够时由屏幕隐藏）：槽位坐标写死在样式文档里、运行期不改，
         // 而「终端样式」只改「哪几条带在用」——所以不能按当前条数建槽，否则切档又要重建菜单。
-        // 组件格数在运行期读一次（取所有已注册等级的最大槽位数）：本类的静态初始化可能早于等级注册表填好。
-        int componentsPerModule = EnergyModuleSlotSemantics.componentSlotsPerModule();
-        for (int module = 0; module < MAX_MODULE_SLOTS; module++) {
-            addSlot(new AppEngSlot(moduleDisplay, module), EnergyModuleSlotSemantics.MODULE[module]);
-            for (int part = 0; part < componentsPerModule; part++) {
-                addSlot(new AppEngSlot(moduleComponents, module * componentsPerModule + part),
-                        EnergyModuleSlotSemantics.COMPONENTS[module]);
+        for (int band = 0; band < MAX_ROWS; band++) {
+            for (int column = 0; column < SLOTS_PER_ROW; column++) {
+                addSlot(new AppEngSlot(moduleComponents, band * SLOTS_PER_ROW + column),
+                        EnergyModuleSlotSemantics.componentSemantic(band));
             }
         }
         for (int row = 0; row < MAX_ROWS; row++) {
@@ -196,7 +237,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         }
     }
 
-    /** 供屏幕显示状态用；组件槽与模块槽见 {@link #moduleComponents()} / {@link #moduleDisplay()}。 */
+    /** 供屏幕显示状态用；组件槽见 {@link #moduleComponents()}，标题行图标见 {@link #moduleTitles()}。 */
     public EnergyCellModuleBlockEntity host() {
         return this.host;
     }
@@ -208,10 +249,6 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     /** 标题行的等级图标槽用的库存（只读展示，见 {@link ModuleTitleInventory}）。 */
     public InternalInventory moduleTitles() {
         return this.moduleTitles;
-    }
-
-    public InternalInventory moduleDisplay() {
-        return this.moduleDisplay;
     }
 
     /**
@@ -309,21 +346,20 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         if (semantic == null) {
             return true;
         }
-        int windowIndex = moduleIndexOfSemantic(semantic);
-        if (windowIndex < 0) {
-            // 不是模块/组件槽（例如玩家背包）：不归这条规则管。
+        int band = bandOfSemantic(semantic);
+        if (band < 0) {
+            // 不是组件槽（例如玩家背包、标题行的图标槽）：不归这条规则管。
             return true;
         }
-        var tier = moduleTierAt(windowIndex);
+        var tier = bandTierAt(band);
         return tier != null && tier.id().equals(this.selectedTier);
     }
 
-    /** 这个语义是不是本屏的模块/组件槽；不是给 -1，是就给对应的窗口下标。 */
-    private static int moduleIndexOfSemantic(SlotSemantic semantic) {
-        for (int index = 0; index < MAX_MODULE_SLOTS; index++) {
-            if (semantic == EnergyModuleSlotSemantics.MODULE[index]
-                    || semantic == EnergyModuleSlotSemantics.COMPONENTS[index]) {
-                return index;
+    /** 这个语义在第几条带上；不是本屏的组件槽给 -1。 */
+    private static int bandOfSemantic(SlotSemantic semantic) {
+        for (int band = 0; band < MAX_ROWS; band++) {
+            if (semantic == EnergyModuleSlotSemantics.componentSemantic(band)) {
+                return band;
             }
         }
         return -1;
@@ -371,9 +407,8 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         this.totalRows = Math.max(1, rows.size());
         this.rowOffset = Math.max(0, Math.min(this.rowOffset, Math.max(0, this.totalRows - 1)));
 
-        // 结构账目没变、窗口也没挪时不必重填：添窗口要逐块取方块实体（默认行表则由宿主缓存），而窗口每拍都
-        // 可能问到。但 rowLayout / tierMask 这两个同步字段要在第一拍就填上，所以首次（lastRefreshedStats
-        // 为 null）必须走一次。
+        // 行表依赖内容（一行 12 格，一档装几种组件就要几行），而 StructureStats 已经把各块的组件增益算进
+        // 账目，组件一变它就变——所以这份失效判断仍然够用，不必另加一条「组件内容」的比对。
         if (this.rowOffset != this.lastRefreshedOffset || !stats.equals(this.lastRefreshedStats)) {
             fillWindow(rows);
             this.lastRefreshedOffset = this.rowOffset;
@@ -382,14 +417,12 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
     }
 
     /**
-     * 按窗口顶端把 {@link #visibleRows} 条带填上：模块行交出最多 3 个模块，标题行交出一个等级图标，
-     * 行表末尾留空位。剩下的槽位（超过可见条数的、以及每条带上用不到的那一套）由屏幕隐藏。
+     * 按窗口顶端把 {@link #visibleRows} 条带填上：行表里该条带是哪一行，以及它属于哪一档。
      *
-     * <p>同时把 {@link #rowLayout} 拼出来——屏幕只知道「哪一条带是什么」，不自己重新分组（那是服务端的事，
-     * 两侧各排一次就可能不一致）。标题行还带上了这一组的模块数，供标题文字用。</p>
+     * <p>同时把 {@link #kindsByTier} 重建一次——组件槽的读路径（144 个格）全靠它，不能每次问都扫一遍结构。
+     * 然后把行号与种类数快照拼出来给客户端排行表。</p>
      */
     private void fillWindow(List<TerminalRows.Row> rows) {
-        this.visible.clear();
         var layout = new StringBuilder();
         for (int band = 0; band < MAX_ROWS; band++) {
             if (band > 0) {
@@ -397,30 +430,218 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             }
             int rowIndex = this.rowOffset + band;
             var row = rowIndex >= 0 && rowIndex < rows.size() ? rows.get(rowIndex) : null;
-            if (band >= this.visibleRows) {
-                // 超出可见条数的带：界面上根本不显示，标记成空，内容也不填。
+            // 超出可见条数的带不填内容：屏幕上根本不显示这几行，填进去的东西照样能被快速移动选中
+            // （服务端筛选只看槽位能不能放，不看屏幕藏没藏），玩家会看到组件「凭空消失」。
+            this.bandRows[band] = band < this.visibleRows ? row : null;
+            var effective = this.bandRows[band];
+            if (effective == null) {
                 layout.append('-');
-            } else if (row == null) {
-                layout.append('-');
-            } else if (row.isTitle()) {
-                layout.append("T:").append(row.title().id()).append(':').append(groupModuleCount(rows, rowIndex));
             } else {
-                layout.append('M');
+                // 行号第一段就是「标题还是组件」（T/S），第二段是哪一档；屏幕据此选带图与标题文字。
+                layout.append(effective.title() ? "T:" : "S:").append(effective.tier().id());
             }
-            for (int column = 0; column < MODULES_PER_ROW; column++) {
-                // 超出可见条数的带不填内容：屏幕上根本不显示这几行，填进去的模块照样能被快速移动选中
-                // （服务端筛选只看槽位能不能放，不看屏幕藏没藏），玩家会看到组件“凭空消失”。
-                // 取本行第 column 个模块要用行表给的**下标表**：同一档的模块在遍历序里通常不连续，
-                // 拿 firstModule + column 会把别档的模块当成本档的填进来。
-                boolean inWindow = band < this.visibleRows;
-                int moduleIndex = row == null || row.isTitle() ? -1 : row.moduleIndex(column);
-                this.visible.add(inWindow && moduleIndex >= 0 ? this.host.moduleAt(moduleIndex) : null);
-            }
-            this.moduleTitles.setRow(band, row, band < this.visibleRows);
         }
-        // 行表定型后重算服务端镜像：这一句是「模块本体能不能同步到客户端」的唯一开关。
-        this.moduleDisplay.refreshServerStacks();
+        // 聚合要覆盖整张行表而不只是窗口：标题行的「已装配 a / b」得拿得出任何一档的数，哪怕它此刻不在窗口里。
+        this.kindsByTier.clear();
+        for (var row : rows) {
+            if (!row.title()) {
+                this.kindsByTier.computeIfAbsent(row.tier().id(), id -> aggregateKinds(row.tier()));
+            }
+        }
+        this.moduleTitles.refresh(this.bandRows);
         this.structureSnapshot = buildStructureSnapshot();
+        this.kindSnapshot = buildKindSnapshot();
+        this.assemblySnapshot = buildAssemblySnapshot();
+        this.slotCountSnapshot = buildSlotCountSnapshot();
+    }
+
+    /**
+     * 该档已装组件的聚合：每种一个条目（代表栈 + 件数）。
+     *
+     * <p>顺序必须稳：按组件的量级（{@link StorageComponents#magnitudeOf}）升序，同量级再按注册名——否则格子里的
+     * 东西会随结构遍历顺序跳，玩家看到的就是「每次开屏都换个位置」。</p>
+     */
+    private List<ComponentKind> aggregateKinds(EnergyCellTier tier) {
+        var counts = new LinkedHashMap<Item, Integer>();
+        var representatives = new LinkedHashMap<Item, ItemStack>();
+        for (var module : this.host.structureModules()) {
+            if (module.tier() != tier) {
+                continue;
+            }
+            var inventory = module.getInternalInventory();
+            for (int slot = 0; slot < inventory.size(); slot++) {
+                var stack = inventory.getStackInSlot(slot);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                var item = stack.getItem();
+                counts.merge(item, 1, Integer::sum);
+                representatives.putIfAbsent(item, stack.copyWithCount(1));
+            }
+        }
+        var list = new ArrayList<ComponentKind>(counts.size());
+        for (var entry : counts.entrySet()) {
+            list.add(new ComponentKind(representatives.get(entry.getKey()), entry.getValue()));
+        }
+        list.sort(Comparator
+                .comparingLong((ComponentKind kind) -> StorageComponents.magnitudeOf(kind.stack()))
+                .thenComparing(kind -> kind.stack().getItem().toString()));
+        return list;
+    }
+
+    /** 每档的种类数，按固定位号顺序拼给客户端排行表用（两边同一张位号表）。 */
+    private String buildKindSnapshot() {
+        var tiers = ModularCellTiers.all();
+        var snapshot = new StringBuilder();
+        for (int index = 0; index < tiers.size(); index++) {
+            if (index > 0) {
+                snapshot.append(',');
+            }
+            var kinds = this.kindsByTier.get(tiers.get(index).id());
+            snapshot.append(kinds == null ? 0 : kinds.size());
+        }
+        return snapshot.toString();
+    }
+
+    /**
+     * 每个组件格的件数，按下标顺序拼（{@code 带 × 12 + 列}）。屏幕画格内数字用。
+     */
+    private String buildSlotCountSnapshot() {
+        var snapshot = new StringBuilder();
+        for (int band = 0; band < MAX_ROWS; band++) {
+            var row = this.bandRows[band];
+            var kinds = row == null || row.title() ? null : this.kindsByTier.get(row.tier().id());
+            for (int column = 0; column < SLOTS_PER_ROW; column++) {
+                if (band > 0 || column > 0) {
+                    snapshot.append(',');
+                }
+                int count = 0;
+                if (kinds != null) {
+                    int index = row.firstKind() + column;
+                    if (index >= 0 && index < kinds.size()) {
+                        count = kinds.get(index).count();
+                    }
+                }
+                snapshot.append(count);
+            }
+        }
+        return snapshot.toString();
+    }
+
+    /** 每档已装件数，按固定位号顺序拼给客户端（标题行的「已装配 a / b」用它）。 */
+    private String buildAssemblySnapshot() {
+        var tiers = ModularCellTiers.all();
+        var snapshot = new StringBuilder();
+        for (int index = 0; index < tiers.size(); index++) {
+            if (index > 0) {
+                snapshot.append(',');
+            }
+            var kinds = this.kindsByTier.get(tiers.get(index).id());
+            if (kinds == null) {
+                snapshot.append(0);
+                continue;
+            }
+            int used = 0;
+            for (var kind : kinds) {
+                used += kind.count();
+            }
+            snapshot.append(used);
+        }
+        return snapshot.toString();
+    }
+
+    /** 第 {@code band} 条带属于哪一档；空带给 {@code null}。 */
+    @Nullable
+    private EnergyCellTier bandTierAt(int band) {
+        var row = band >= 0 && band < MAX_ROWS ? this.bandRows[band] : null;
+        return row == null ? null : row.tier();
+    }
+
+    /** 该档的装配名额与已装件数：{@code [名额, 已装]}。名额 = 该档模块数 × 该档每块槽位数。 */
+    private int[] tierUsage(EnergyCellTier tier) {
+        int modules = 0;
+        int used = 0;
+        for (var module : this.host.structureModules()) {
+            if (module.tier() != tier) {
+                continue;
+            }
+            modules++;
+            var inventory = module.getInternalInventory();
+            for (int slot = 0; slot < inventory.size(); slot++) {
+                if (!inventory.getStackInSlot(slot).isEmpty()) {
+                    used++;
+                }
+            }
+        }
+        return new int[] { modules * tier.componentSlots(), used };
+    }
+
+    /**
+     * 把若干个同种组件摊到该档各模块的空槽上（放入路径的唯一落点）。
+     *
+     * <p><b>优先填「当前组件数最少」的那一块</b>，于是同种组件会被摊开而不是堆在前几块上——这正是需求里的「均摊」。
+     * 容量公式按块计数量加成（{@code b × C_cap}），摊开与堆在一起的账不同，所以这个次序是数值口径的一部分，
+     * 不是实现细节，不能随手改。</p>
+     */
+    private void installInto(EnergyCellTier tier, ItemStack one, int count) {
+        var modules = new ArrayList<EnergyCellModuleBlockEntity>();
+        for (var module : this.host.structureModules()) {
+            if (module.tier() == tier) {
+                modules.add(module);
+            }
+        }
+        for (int placed = 0; placed < count; placed++) {
+            EnergyCellModuleBlockEntity target = null;
+            int fewest = Integer.MAX_VALUE;
+            for (var module : modules) {
+                var inventory = module.getInternalInventory();
+                int filled = 0;
+                boolean free = false;
+                for (int slot = 0; slot < inventory.size(); slot++) {
+                    if (inventory.getStackInSlot(slot).isEmpty()) {
+                        free = true;
+                    } else {
+                        filled++;
+                    }
+                }
+                if (free && filled < fewest) {
+                    fewest = filled;
+                    target = module;
+                }
+            }
+            if (target == null) {
+                // 名额算错了也不会多塞：没空槽就停手，剩下的交给调用方当「放不进去」。
+                return;
+            }
+            var inventory = target.getInternalInventory();
+            for (int slot = 0; slot < inventory.size(); slot++) {
+                if (inventory.getStackInSlot(slot).isEmpty()) {
+                    inventory.setItemDirect(slot, one.copy());
+                    break;
+                }
+            }
+        }
+    }
+
+    /** 从该档取出若干个该种组件（按结构顺序取，取完为止）。 */
+    private void uninstallFrom(EnergyCellTier tier, Item item, int count) {
+        int removed = 0;
+        for (var module : this.host.structureModules()) {
+            if (removed >= count) {
+                break;
+            }
+            if (module.tier() != tier) {
+                continue;
+            }
+            var inventory = module.getInternalInventory();
+            for (int slot = 0; slot < inventory.size() && removed < count; slot++) {
+                var stack = inventory.getStackInSlot(slot);
+                if (!stack.isEmpty() && stack.getItem() == item) {
+                    inventory.setItemDirect(slot, ItemStack.EMPTY);
+                    removed++;
+                }
+            }
+        }
     }
 
     /**
@@ -447,139 +668,19 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         return snapshot.toString();
     }
 
-    /** 第 {@code titleRowIndex} 条标题行所对应的等级组里有多少个模块（标题后面那行文字要用）。 */
-    private static int groupModuleCount(List<TerminalRows.Row> rows, int titleRowIndex) {
-        int count = 0;
-        for (int i = titleRowIndex + 1; i < rows.size() && !rows.get(i).isTitle(); i++) {
-            count += rows.get(i).moduleCount();
-        }
-        return count;
-    }
-
-    /** 窗口第 {@code windowIndex} 个模块；窗口外或不在服务端返回 null。 */
-    @Nullable
-    private EnergyCellModuleBlockEntity windowModuleAt(int windowIndex) {
-        if (!isServerSide() || windowIndex < 0 || windowIndex >= this.visible.size()) {
-            return null;
-        }
-        return this.visible.get(windowIndex);
-    }
-
     /**
-     * 窗口第 {@code windowIndex} 个模块的等级。
+     * 组件槽用的库存：按「档 × 组件类型」聚合的视图。
      *
-     * <p>服务端问方块实体；客户端没有那份列表，就从展示槽里那张方块物品反推——展示槽的内容是同步过来的，
-     * 于是客户端能独立判断「这一格该不该收组件」，不必再多加一条协议。</p>
-     */
-    @Nullable
-    private EnergyCellTier moduleTierAt(int windowIndex) {
-        if (windowIndex < 0 || windowIndex >= MAX_MODULE_SLOTS) {
-            return null;
-        }
-        if (isServerSide()) {
-            var module = windowModuleAt(windowIndex);
-            return module == null ? null : module.tier();
-        }
-        var display = this.moduleDisplay.getStackInSlot(windowIndex);
-        if (display.getItem() instanceof BlockItem blockItem
-                && blockItem.getBlock() instanceof EnergyCellModuleBlock module) {
-            return module.tier();
-        }
-        return null;
-    }
-
-    /**
-     * 模块展示槽用的库存：一格一个模块，放的是该模块的方块物品并把坐标写进物品名——屏幕的文本带直接取这个
-     * 名字，于是模块的身份跟着槽位同步走，不需要另开一条「窗口数据」协议。
-     */
-    private final class ModuleDisplayInventory implements InternalInventory {
-
-        private final ItemStack[] clientMirror = new ItemStack[MAX_MODULE_SLOTS];
-
-        /**
-         * 服务端镜像：窗口里每一格该显示的东西。
-         *
-         * <p>必须**存下来**，不能每次现算。菜单槽位的同步只推「跟上一次不一样」的格子，而现算的值每次调用
-         * 都是新造的 ItemStack，永远翻不出「变了」这个结论——于是客户端镜像一直空着：模块本体不显示，
-         * 屏幕又据「这一列取不到等级」把组件格覆盖层整列跳过，看起来就是「组件槽位置全空、不可交互」。</p>
-         */
-        private final ItemStack[] serverStacks = new ItemStack[MAX_MODULE_SLOTS];
-
-        private ModuleDisplayInventory() {
-            Arrays.fill(this.clientMirror, ItemStack.EMPTY);
-            Arrays.fill(this.serverStacks, ItemStack.EMPTY);
-        }
-
-        /** 窗口内容变了（滚动、结构变化、开屏）之后重算服务端镜像；同步据此把变化推给客户端。 */
-        private void refreshServerStacks() {
-            for (int slot = 0; slot < MAX_MODULE_SLOTS; slot++) {
-                var module = windowModuleAt(slot);
-                this.serverStacks[slot] = module == null ? ItemStack.EMPTY : labelOf(module);
-            }
-        }
-
-        @Override
-        public int size() {
-            return MAX_MODULE_SLOTS;
-        }
-
-        @Override
-        public ItemStack getStackInSlot(int slot) {
-            if (slot < 0 || slot >= MAX_MODULE_SLOTS) {
-                return ItemStack.EMPTY;
-            }
-            return isServerSide() ? this.serverStacks[slot] : this.clientMirror[slot];
-        }
-
-        /** 只读槽：服务端不接受写入，客户端把同步过来的栈收进镜像。 */
-        @Override
-        public void setItemDirect(int slot, ItemStack stack) {
-            // 镜像只在客户端有意义（服务端读路径不问它），服务端写进来只会白占一格引用。
-            if (!isServerSide() && slot >= 0 && slot < MAX_MODULE_SLOTS) {
-                this.clientMirror[slot] = stack;
-            }
-        }
-
-        @Override
-        public boolean isItemValid(int slot, ItemStack stack) {
-            return false;
-        }
-
-        @Override
-        public int getSlotLimit(int slot) {
-            return 1;
-        }
-
-        /** 取不走：{@code AppEngSlot#mayPickup} 靠它模拟抽取，返回空即「不可取」。 */
-        @Override
-        public ItemStack extractItem(int slot, int amount, boolean simulate) {
-            return ItemStack.EMPTY;
-        }
-
-        private ItemStack labelOf(EnergyCellModuleBlockEntity module) {
-            var stack = new ItemStack(module.getBlockState().getBlock().asItem());
-            var pos = module.getBlockPos();
-            stack.set(DataComponents.CUSTOM_NAME, Component.translatable(
-                    "gui.ae2modularcells.module_label", pos.getX(), pos.getY(), pos.getZ()));
-            return stack;
-        }
-    }
-
-    /**
-     * 组件槽用的库存：{@code 9 个模块 × 3 格}。每格直连对应模块的组件库存，写进去就触发那一块的结构重算。
+     * <p>底层没有第二份数据：读的时候扫一遍该档各模块的真实组件槽，把同种组件并成一格（件数是它们的和）；
+     * 写的时候不动那一格的「位置」，而是把组件摊到该档各模块的空槽上（{@link #installInto}）——所以玩家放进
+     * 哪一格不影响结果，一格只是「一种组件的一个桶」。</p>
      *
-     * <p>模块不存在、或该模块的等级只有 1~2 个槽时，多出来的格一律「不存在」：读是空、写被拒、不收物品——
-     * 屏幕据此盖上「不可用槽」覆盖层。</p>
+     * <p>表示栈的件数恒为 1：真实件数由屏幕画。结构一大件数就超出物品栈能表达的范围，而这里的格本来就不是
+     * 物品栈。</p>
      */
     private final class ModuleComponentInventory implements InternalInventory {
 
-        /** 每个模块预留的组件格数：运行期读（见 {@link EnergyModuleSlotSemantics#componentSlotsPerModule()}）。
-         *
-         * <p>不能写成 static 常量：它要读等级注册表，而类加载期注册表可能还是空的。字段声明在下面那几个数组
-         * 之前，保证初始化顺序上先有它。</p> */
-        private final int componentsPerModule = EnergyModuleSlotSemantics.componentSlotsPerModule();
-
-        private final ItemStack[] clientMirror = new ItemStack[MAX_MODULE_SLOTS * componentsPerModule];
+        private final ItemStack[] clientMirror = new ItemStack[MAX_SLOT_COUNT];
 
         private ModuleComponentInventory() {
             Arrays.fill(this.clientMirror, ItemStack.EMPTY);
@@ -587,61 +688,116 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
 
         @Override
         public int size() {
-            return MAX_MODULE_SLOTS * componentsPerModule;
+            return MAX_SLOT_COUNT;
+        }
+
+        /** 该格对应的聚合条目；客户端、空带、标题行、或该格还没用到时给 {@code null}。 */
+        @Nullable
+        private ComponentKind kindAt(int slot) {
+            var row = rowAt(slot);
+            if (row == null || row.title()) {
+                return null;
+            }
+            var kinds = kindsByTier.get(row.tier().id());
+            if (kinds == null) {
+                return null;
+            }
+            int index = row.firstKind() + columnAt(slot);
+            return index >= 0 && index < kinds.size() ? kinds.get(index) : null;
         }
 
         @Override
         public ItemStack getStackInSlot(int slot) {
-            if (slot < 0 || slot >= size()) {
+            if (slot < 0 || slot >= MAX_SLOT_COUNT) {
                 return ItemStack.EMPTY;
             }
             if (!isServerSide()) {
                 return this.clientMirror[slot];
             }
-            var module = windowModuleAt(moduleIndex(slot));
-            int part = componentIndex(slot);
-            if (module == null || part >= module.tier().componentSlots()) {
+            var kind = kindAt(slot);
+            if (kind == null) {
                 return ItemStack.EMPTY;
             }
-            return module.getInternalInventory().getStackInSlot(part);
+            // 件数要报出来，原版才知道「这一格有几个」（见 MAX_REPORTED_COUNT）；超过上限的部分由屏幕画。
+            return kind.stack().copyWithCount(Math.min(kind.count(), MAX_REPORTED_COUNT));
         }
 
         @Override
         public void setItemDirect(int slot, ItemStack stack) {
-            if (slot < 0 || slot >= size()) {
-                return;
+            // 镜像只在客户端有意义（服务端读路径不问它），服务端写进来只会白占一格引用。
+            if (!isServerSide() && slot >= 0 && slot < MAX_SLOT_COUNT) {
+                this.clientMirror[slot] = stack;
             }
-            this.clientMirror[slot] = stack;
-            if (!isServerSide()) {
-                return;
-            }
-            var module = windowModuleAt(moduleIndex(slot));
-            int part = componentIndex(slot);
-            if (module == null || part >= module.tier().componentSlots()) {
-                return;
-            }
-            module.getInternalInventory().setItemDirect(part, stack);
         }
 
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
-            int part = componentIndex(slot);
-            var tier = moduleTierAt(moduleIndex(slot));
-            return tier != null && part < tier.componentSlots() && StorageComponents.isComponent(stack);
+            if (!StorageComponents.isComponent(stack)) {
+                return false;
+            }
+            var tier = bandTierAt(slot / SLOTS_PER_ROW);
+            if (tier == null) {
+                return false;
+            }
+            // 一次只扫一遍结构：这个方法会被 144 个槽逐个问，扫两遍就是白白翻倍。
+            var usage = tierUsage(tier);
+            return usage[1] < usage[0];
         }
 
         @Override
         public int getSlotLimit(int slot) {
-            // 一个组件槽放一件：容量折扣按「插了几件」算，堆叠会让公式失去意义。
-            return 1;
+            // 一格能放多少由「该档还剩多少名额」封顶，而那名额随时在变。这里报一个不限额，真正拦在 insertItem 里
+            // 按当时的名额算；报一个固定值会让 UI 把多余的量默默丢掉，玩家看到的是「放了却少了」。
+            return Integer.MAX_VALUE;
         }
 
-        private int moduleIndex(int slot) {
-            return slot / componentsPerModule;
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            if (stack.isEmpty() || !StorageComponents.isComponent(stack)) {
+                return stack;
+            }
+            var row = rowAt(slot);
+            if (row == null || row.title()) {
+                return stack;
+            }
+            var usage = tierUsage(row.tier());
+            int room = usage[0] - usage[1];
+            if (room <= 0) {
+                return stack;
+            }
+            int count = Math.min(stack.getCount(), room);
+            if (!simulate) {
+                installInto(row.tier(), stack.copyWithCount(1), count);
+            }
+            return count >= stack.getCount() ? ItemStack.EMPTY : stack.copyWithCount(stack.getCount() - count);
         }
 
-        private int componentIndex(int slot) {
-            return slot % componentsPerModule;
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            var kind = kindAt(slot);
+            if (kind == null || amount <= 0) {
+                return ItemStack.EMPTY;
+            }
+            int count = Math.min(amount, kind.count());
+            if (count <= 0) {
+                return ItemStack.EMPTY;
+            }
+            if (!simulate) {
+                uninstallFrom(rowAt(slot).tier(), kind.stack().getItem(), count);
+            }
+            return kind.stack().copyWithCount(count);
+        }
+
+        @Nullable
+        private TerminalRows.Row rowAt(int slot) {
+            if (slot < 0 || slot >= MAX_SLOT_COUNT) {
+                return null;
+            }
+            return bandRows[slot / SLOTS_PER_ROW];
+        }
+
+        private int columnAt(int slot) {
+            return slot % SLOTS_PER_ROW;
         }
     }
 
@@ -661,12 +817,12 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             Arrays.fill(this.clientMirror, ItemStack.EMPTY);
         }
 
-        /** 服务端按行表重填一条带：不是标题行、超出可见条数、或行表到头了就清空。 */
-        private void setRow(int band, @Nullable TerminalRows.Row row, boolean withinVisibleRows) {
-            if (band < 0 || band >= MAX_ROWS) {
-                return;
+        /** 行表定型后重填：每条带是不是标题行、是哪一档。 */
+        private void refresh(TerminalRows.Row[] rows) {
+            for (int band = 0; band < MAX_ROWS; band++) {
+                var row = rows[band];
+                this.tiers[band] = row != null && row.title() ? row.tier() : null;
             }
-            this.tiers[band] = row != null && row.isTitle() && withinVisibleRows ? row.title() : null;
         }
 
         @Override
