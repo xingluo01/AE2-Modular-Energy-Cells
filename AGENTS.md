@@ -23,13 +23,15 @@ AE2（应用能源 2）的附属模组 `ae2modularcells`：模块化能源元件
 | `docs/kubejs/README.md` | 给整合包用脚本加模块等级时。含可抄的完整案例（脚本 + 方块状态 + 模型 + 贴图） |
 | `CHANGELOG.md` | 发行说明（版本段会被取为发布文案） |
 | `README.md` | 玩法自述（英文，商店页与 GitHub 首页） |
+| `docs/PLATFORM.md` | 商店页正文（英文，玩家向）；CurseForge 项目页正文的唯一事实源，改完要人工到站点重贴 |
+| `docs/RELEASE.md` | 发版清单：CurseForge 项目设置、上传字段（含 id/slug 依据）、发版步骤与自检 |
 
 ## 二、信息类文档（**本机本地，已 gitignore**，不随仓库分发）
 
 | 文档 | 内容 |
 |---|---|
-| `docs/LOCAL_DEPS.md` | 本机路径索引：`libs/*.jar` 各从哪来、兄弟仓库快捷方式指向哪、gradle 缓存在哪（**待建**） |
-| `docs/LOCAL_CLONES.md` | 上游源码浅克隆的分支基线（**待建**；具体路径与克隆清单属本机信息，写在那份文档里） |
+| `docs/LOCAL_DEPS.md` | 本机路径索引：`libs/*.jar` 各从哪来、兄弟仓库快捷方式指向哪、gradle 缓存在哪 |
+| `docs/LOCAL_CLONES.md` | 上游源码浅克隆的分支基线（`D:\Temp` 下 19 个仓的路径、分支、HEAD 与用途；换机器要重新取值） |
 
 ## 三、动手前必须知道的硬约定
 
@@ -64,6 +66,6 @@ Windows 上同样四条命令另有启动脚本（仓库根）：`run_client.bat
 
 ## 五、读上游源码之前
 
-- 位置与分支见 `docs/LOCAL_CLONES.md`（**待建**：上游各仓的镜像路径与分支基线都记在那份文档里，可从姊妹项目 AE2 Pattern Disk 的同名文档抄一份，再按本机实际路径改）。
+- 位置与分支见 `docs/LOCAL_CLONES.md`（上游各仓的镜像路径、检出分支与 HEAD 都记在那份文档里；换机器后按该文档第五节重新取值，别照抄旧哈希）。
 - **别信 gradle 缓存里那份 AE2 sources jar**：那是别的 Minecraft 线的构建，读错版本会得出「某方法有 / 没有」这类反向结论。
 - 本项目的接入点都在 AE2 的公开面：`appeng/api/networking/energy/IAEPowerStorage.java`、`IEnergyService`，以及 AE2 自己那台能源元件的方块实体（照它写最稳）。

@@ -64,3 +64,5 @@ On Windows the same commands ship as `run_client.bat`, `run_client_emi.bat`, `ru
 | [`docs/INTEGRATION.md`](docs/INTEGRATION.md) | For add-on and modpack authors: the registration API, the resources you have to supply, and what failures look like |
 | [`docs/TODO.md`](docs/TODO.md) | Implementation order, balance table and open questions |
 | [`CHANGELOG.md`](CHANGELOG.md) | Player-visible changes (writing style: `docs/CHANGELOG_STYLE.md`) |
+| [`docs/PLATFORM.md`](docs/PLATFORM.md) | The store-page text (this is what goes on the CurseForge project page) |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist: CurseForge project settings, upload fields, steps and pre-flight checks |

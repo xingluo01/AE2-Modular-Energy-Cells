@@ -1,6 +1,6 @@
 # 更新日志编辑规则
 
-`CHANGELOG.md` 的版本段会被发布流程取出，作为 GitHub Release 说明，并同时送 Modrinth 与 CurseForge（姊妹项目里是 `.github/workflows/release.yml` 的 Collect changelog 一步）。本仓的发布流程尚未接入（`.github/workflows/` 为空），接入时照本节体例。
+`CHANGELOG.md` 的版本段会被发布流程取出，作为 GitHub Release 说明，并同时送 CurseForge（本仓是 `.github/workflows/release.yml` 的 Collect changelog 一步）。体例与发版前自检见本节，上传字段逐项见 `docs/RELEASE.md`。
 
 体例沿用姊妹项目 AE2 Pattern Disk 的更新日志（其自身对齐 NEO ECO AE Extension）：小节固定、一行一条、只讲事实。
 
@@ -46,12 +46,12 @@
 - AE2 最低版本为 **19.0.0**
 ```
 
-只列**本次发版变动的**硬线下限（`neoforge.mods.toml` 里进了 `versionRange` 的那些，本仓现有两条：AE2、GuideME）。没变的不重复列——玩家装不上时加载器会在启动阶段直接报出是哪一条。软依赖（JEI、EMI、MEGA Cells）的建议版本写进条目正文。
+只列**本次发版变动的**硬线下限（`neoforge.mods.toml` 里进了 `versionRange` 且带下界的那些，本仓现有两个：AE2 `[19.0.0,)`、MezzConfig `[0.5.0,1.0.0)`——GuideME 写的是 `*`，没有下限，不必列）。没变的不重复列——玩家装不上时加载器会在启动阶段直接报出是哪一条。软依赖（JEI、EMI、MEGA Cells）的建议版本写进条目正文。
 
 ## 五、发布页（CI 拼，不用手写）
 
-- 正文首行由 CI 注入 `# AE2 Modular Energy Cells <版本> 更新日志`（发布流程接入后照此执行）。
-- GitHub Release 标题沿用 tag（如 `v0.1.0`）；CurseForge 的 display_name 用 `AE2 Modular Energy Cells <版本> [NeoForge 1.21.1]`。
+- 正文首行由 CI 注入 `# AE2 Modular Energy Units <版本> 更新日志`（由 `.github/workflows/release.yml` 的 Collect changelog 一步拼上）。
+- GitHub Release 标题沿用 tag（如 `v0.1.0`）；CurseForge 的 display_name 用 `AE2 Modular Energy Units <版本> [NeoForge 1.21.1]`。
 - 发布说明不用 GitHub 自动生成的 notes：基线会被对比分支带偏。
 - 段里可以放 HTML 注释（`<!-- ... -->`）给维护者看，但取段时**注释会原样进发布文案**——发布前把注释删干净。
 

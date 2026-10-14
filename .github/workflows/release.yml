@@ -1,0 +1,153 @@
+name: Release
+
+# 推 tag（如 v0.1.0）即发布：构建 → CurseForge → GitHub Release。
+# 只接 CurseForge；Modrinth 未接入（要接的话见 docs/RELEASE.md §六）。
+#
+# 更新日志优先从仓库里的 CHANGELOG.md 取当前 tag 那一版段落，取不到才退回按提交主题拼接
+# （体例与发版前自检见 docs/CHANGELOG_STYLE.md）。
+#
+# 需要在仓库里预先配置（Settings → Secrets and variables → Actions）：
+#   Secrets   CURSEFORGE_TOKEN        https://www.curseforge.com/account/api-tokens 生成
+#   Variables CURSEFORGE_PROJECT_ID   CurseForge 的数字项目 id（不是 slug）
+#             CURSEFORGE_RELEASE_TYPE 可选：覆盖默认的 alpha（beta / release）
+# 另外 CurseForge 的项目必须先在站点人工创建——自动化只能往已有项目传文件，建不了项目；
+# 且首个文件要过人工审核才对玩家可见。
+#
+# 上传字段逐项（含 game_versions 的数字 id 与依赖 slug 的证据）见 docs/RELEASE.md。
+#
+# 重跑同一个 tag：CurseForge 不去重、会再传一份重复文件。发布中断后优先改版本号重发，不要直接重跑。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # fetch-depth: 0 只在 changelog 退回「按提交主题拼接」那条路上用到（要上一个 tag 的位置）。
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # tag 与 gradle.properties 必须一致：本仓约定版本号只从 gradle.properties 维护，
+      # 打 tag 是给它做标记。两者不一致时说明 tag 打错了或忘了改版本号——这时静默发一版出去，
+      # 玩家看到的版本号与仓库里的记录会对不上，所以直接拦下。
+      - name: Verify tag matches gradle.properties
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          declared=$(grep -m1 '^mod_version=' gradle.properties | cut -d= -f2- | tr -d ' \r')
+          if [ "$declared" != "$VERSION" ]; then
+            echo "::error title=版本号不一致::tag 是 v$VERSION，但 gradle.properties 的 mod_version 是 $declared。先把 mod_version 改成 $VERSION 再打 tag。"
+            exit 1
+          fi
+          echo "版本号一致：$VERSION"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        # v6 起官方缓存逻辑改为专有组件（升级即视为接受其 ToU），cache-provider: basic
+        # 指回 MIT 的 @actions/cache 实现，避开许可变更。
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      # 本仓的 gradle.properties 里已经不放本机专属取值（JDK 路径与 Windows 信任库都在用户级配置里，
+      # 见文件末尾那段注释），build.gradle 也不引用 libs/*.jar，所以这一步没有需要覆盖的属性，
+      # 也不需要从外部拉取任何本地专属依赖。
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew build -Pmod_version=${{ steps.ver.outputs.version }}
+
+      - name: Collect changelog
+        id: changelog
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          # 优先用仓库里的 CHANGELOG.md：那是按玩家视角整理过的说明，比拼接 commit 主题可读。
+          # 取 "## [<版本>]" 到下一个 "## [" 之间的内容（三级标题 ### 不会误终止）。取不到就
+          # 退回到按提交主题拼接，保证任何情况下都有内容可用。
+          BODY=""
+          SOURCE="none"
+          if [ -f CHANGELOG.md ]; then
+            # 用 index() 判头而不是正则：CI 的 awk 是 mawk，\[ 在 POSIX ERE 里属未定义写法。
+            BODY=$(awk -v ver="$VERSION" '
+              index($0, "## [") == 1 {
+                if (found) exit
+                if (index($0, "[" ver "]") > 0) { found = 1; next }
+              }
+              found { print }
+            ' CHANGELOG.md | sed -e '/./,$!d')
+            if [ -n "$BODY" ]; then SOURCE="CHANGELOG.md"; fi
+          fi
+          if [ -z "$BODY" ]; then
+            SOURCE="commit log"
+            PREVIOUS=$(git describe --tags --match 'v[0-9]*' --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+            if [ -n "$PREVIOUS" ]; then
+              BODY=$(git log --no-merges --pretty=format:'- %s (%h)' "${PREVIOUS}..${GITHUB_REF_NAME}")
+            else
+              BODY=$(git log --no-merges --pretty=format:'- %s (%h)' "${GITHUB_REF_NAME}")
+            fi
+          fi
+          # 回退是静默的，打一行出来，事后能从 CI 日志看出发布说明是哪来的。
+          echo "changelog source: $SOURCE (${#BODY} chars)"
+          # 正文首行由这里注入版本标题：CHANGELOG 里那行版本标题是取段锚点、不进正文。
+          {
+            echo "body<<CHANGELOG_EOF"
+            echo "# AE2 Modular Energy Units $VERSION 更新日志"
+            echo
+            echo "$BODY"
+            echo
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish to CurseForge
+        uses: itsmeow/curseforge-upload@v3.1.2
+        with:
+          token: ${{ secrets.CURSEFORGE_TOKEN }}
+          project_id: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          game_endpoint: minecraft
+          # 产物名来自 build.gradle 的 base.archivesName = mod_id（= ae2modularcells）。
+          file_path: build/libs/ae2modularcells-${{ steps.ver.outputs.version }}.jar
+          display_name: AE2 Modular Energy Units ${{ steps.ver.outputs.version }} [NeoForge 1.21.1]
+          # 默认 alpha：美术与平衡还在改。发正式版时把仓库变量 CURSEFORGE_RELEASE_TYPE 设成 release，
+          # 不必改这个文件。
+          release_type: ${{ vars.CURSEFORGE_RELEASE_TYPE || 'alpha' }}
+          changelog: ${{ steps.changelog.outputs.body }}
+          changelog_type: markdown
+          # CF 的 gameVersions 必须包含「环境组」（Client/Server），否则会报
+          #   You must select at least one version from the environment group of versions
+          # 该 Action 只会把名称/slug 查表转成 id，既不会自动补环境组，匹配不到还会静默丢弃，
+          # 所以这里直接写传统接口 GET /api/game/versions 的数字 id：
+          #   1.21.1=11779  NeoForge=10150  Client=9638  Server=9639
+          # 注意 Eternal API（api.curseforge.com）的编号是另一套，用错会报 invalid dependency。
+          game_versions: '11779,10150,9638,9639'
+          # CF 侧的依赖关系：三个必需依赖与 src/main/templates/META-INF/neoforge.mods.toml 一致。
+          # 不在这里声明的话，玩家在 CF 页看不到「需要 AE2 / GuideME / MezzConfig」。
+          relations: 'applied-energistics-2:requiredDependency,guideme:requiredDependency,mezzconfig:requiredDependency'
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          # 直接用上面收集的 changelog，与 CurseForge 口径一致。
+          # 不给 generate_release_notes：它以上一个 tag / 上一次 release 为基线，会给出另一份说明。
+          body: ${{ steps.changelog.outputs.body }}
+          files: build/libs/ae2modularcells-${{ steps.ver.outputs.version }}.jar
+          # 产物路径写错时硬失败，而不是静默生成一个没有附件的 release
+          fail_on_unmatched_files: true

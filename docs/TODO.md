@@ -82,10 +82,10 @@
 - 配置界面的语言键约定（对齐 MezzConfig 自己的键形，别猜）：分类名 = `<langKey>.<分类>`；分类描述 = 同 key 再加 `.description`；值名 = `<langKey>.<分类>.<值>`；值描述 = 同 key 再加 `.description`。`valueValues` / `defaultValue` / 「需要重启」这类**通用标签由 MezzConfig 自带**，mod 侧不用写。**窗口标题是它自动生成的（`<ModId> Configuration`），没有对应键**——`IConfigSchemaBuilder` 上也没有声明名字的 API。缺键时看实机日志里 `ConfigTranslationChecker` 的清单，它会逐字列出要补的键
 - ⬜ `modaccessor` / 访问转换（仅当确需访问 AE2 非公开成员时接入，届时补 `mods_accessor.cfg`）
 - 🔄 开发环境已补 **Applied Generators（应用发电机）**（`maven.modrinth:y1qmWFWM:TW2EMLE6`，需 AE2 + Glodium + AppFlux）：FE 侧电源 + AppFlux 折算，用来堆 10^5 ~ 10^6 AE/t 的稳态负载。**尚未实机压测**——速率的触顶行为与 f_in 折半目前仍停在算术推演
-- ⬜ 发布流程（Modrinth/CurseForge workflow；商店图标是上传时另填的独立资产，与 jar 内的 `iconFile` 无关）
+- 🔄 发布流程：`.github/workflows/release.yml` 已接 CurseForge（tag `v*` → 构建 → CF 上传 → GitHub Release），上传字段与项目页设置清单见 `docs/RELEASE.md`。**Modrinth 仍未接**（要 `minotaur` 插件 + 项目 id + PAT，项目描述还得另配一个同步 workflow）；商店图标是上传时另填的独立资产，与 jar 内的 `iconFile` 无关
 - ✅ **本机专属属性已搬出仓库**：`gradle.properties` 不再写 `org.gradle.java.home` 与 jvmargs 里的 `Windows-ROOT` 信任库（Linux 上不是合法 keystore 类型、路径不存在时 Gradle 直接失败），它们只存在于本机的 `~/.gradle/gradle.properties`（不入库）。接 CI 时用命令行传 `-Dorg.gradle.java.home="$JAVA_HOME"` 与 `-Dorg.gradle.jvmargs="...trustStoreType=JKS"` 覆盖
 - ✅ 图标已补：`[[mods]]` 段用 `iconFile` / `bannerFile`（`logoFile` 已废弃，别用），两张不同尺寸的图放在**包根**（`ae2modularcells-icon.png` 400² 与 `ae2modularcells-banner.png` 800²）。这类字段解析的是**资源包根**，不是 `assets/<modid>/`——对照 `mezz_config` / `mezz_config_gui` 的图标也在包根。banner 位是宽幅的，目前用的正方图会居中显示（两侧留白），等有宽幅图时替换；小图标源图 400² 缩到 32px 用默认的线性过滤更干净，所以不写 `iconBlur`
-- ⬜ 指南书（GuideME `ae2guide`，中英两份要同步改）
+- 🔄 指南书：`assets/ae2modularcells/ae2guide` 已建（英/中两套 + 导航页，见第四节），这份 M8 条目剩下的是排版与插图；改文案时中英两份要同步改
 - ⬜ `docs/LOCAL_DEPS.md` 与 `docs/LOCAL_CLONES.md`（本机本地，已 gitignore）
 
 ### M9 扩展面（第三方接入）— 🔄 P3
@@ -177,7 +177,7 @@ T_in = min(T_v × f_in, Σ V_in_max_j)         总输入速率
 
 ## 四、已知欠账 / 有意不做
 
-- **发布流程未接入**：尚未创建 `.github/workflows/`，本仓暂无 tag 发版流程（M8）。
+- **发布流程**：`.github/workflows/release.yml` 已接 CurseForge（tag `v*` 触发；含 tag 与 `mod_version` 一致性校验），上传字段与项目页设置清单见 `docs/RELEASE.md`。Modrinth 未接。
 - **指南书已建**：`assets/ae2modularcells/ae2guide`（英/中两套 + 导航页），终端左侧「打开指南」直接指向它（样式文档的 `helpTopic`）。文案与显示名随改名同步（M8 剩下的是排版与插图）。
 - **访问转换已接入**：`src/main/resources/META-INF/accesstransformer.cfg`（目前只开 `Slot.x/y` 去 final，见 `docs/ARCHITECTURE.md` §6）。
 - **占位贴图是线框**：十二张方块贴图（3 档 × 4 张）由 `tools/gen-placeholder-textures.cjs` 脚本生成，只为「看得出连接关系是否生效」，不是美术。
