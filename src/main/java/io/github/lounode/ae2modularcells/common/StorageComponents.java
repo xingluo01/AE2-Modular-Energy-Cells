@@ -75,4 +75,17 @@ public final class StorageComponents {
         var gain = gainOf(stack);
         return gain == null ? 0L : gain.magnitude();
     }
+
+    /**
+     * 两个栈是不是「同一种组件」——按<b>物品 + 数据组件</b>比，不是只比 {@code Item}。
+     *
+     * <p>本模组有三处要回答这个问题，必须是同一口径：终端行表数「这一档有几种」
+     * （{@code EnergyCellModuleBlockEntity#rows}）、组件格聚合分格（{@code EnergyModuleTerminalMenu#aggregateKinds}）、
+     * 取件时找件（同类的 {@code uninstallFrom}）。只比 Item 会把同一物品的不同变体并成一种：三处数的数一旦不同，
+     * 客户端排出来的行与服务端排出来的行就会错位（画出来的格子与能点的格子不是同一档）；取件那侧还可能删到
+     * 另一种变体。口径钉在这里，改的时候三处一起动。</p>
+     */
+    public static boolean isSameKind(ItemStack a, ItemStack b) {
+        return ItemStack.isSameItemSameComponents(a, b);
+    }
 }

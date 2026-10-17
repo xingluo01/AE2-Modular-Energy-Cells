@@ -267,6 +267,14 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      *
      * <p>所以这里把 {@code safeInsert} 接到聚合库存自己的 {@code insertItem} 上——它按「该档真实剩余名额」算能
      * 放多少、并把组件摊到各模块的空槽（见 {@code installInto}）。</p>
+     *
+     * <p><b>但 {@code safeInsert} 只覆盖「往空位放」这一条</b>：原版的左键交换（光标非空、格非空、
+     * {@code mayPlace} 为真、且两者不同种时，它会 {@code setCarried(slot.getItem())} 再把光标那件
+     * {@code setByPlayer(...)} 回来）和数字键交换走的是「整体读、整体写」假设——而本格报出的 {@code getItem()}
+     * 是<b>派生</b>代表栈（件数还封顶到 {@value EnergyModuleSlotSemantics#MAX_REPORTED_COUNT}），{@code set()} 只做
+     * 底料的差量对账，两半不对称。于是交换的一半（代表栈交到光标）真的发生、另一半（手里的组件写回来）被
+     * 「不同种不动」的守卫丢掉：<b>复刻一份格里的组件，同时吞掉手上那件</b>。这条复制链在 {@code mayPlace} 里
+     * 从源头断掉，见该方法的说明。</p>
      */
     private final class ComponentBucketSlot extends AppEngSlot {
 
@@ -281,6 +289,27 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             this.bucketIndex = bucketIndex;
             // 格内数字由屏幕画（理由同外层那处），原版那份关掉。
             setHideAmount(true);
+        }
+
+        /**
+         * 只有空桶格，或「和格里同一种」的组件，才允许原版走放置路径。
+         *
+         * <p><b>为什么必须卡在这里</b>：{@code AbstractContainerMenu#doClick} 在「光标非空 + 格非空 + 可放 + 不同种
+         * + 件数不超过格上限」时的写法是 {@code setCarried(slot.getItem())} 然后 {@code slot.setByPlayer(光标那件)}。
+         * 对普通槽这是一次交换（读出来的那件正是被移出的），对本格却是「派生的代表栈交出去、底料没动」，而写回
+         * 那一半在 {@code set} 里被当成「另一种组件，不动」丢掉——净效果是复制格里的组件并吞掉手上的组件。
+         * {@code ClickType.SWAP}（数字键）的非空分支同样是这一对调用。</p>
+         *
+         * <p>所以不同种直接在 {@code mayPlace} 否掉：原版随后只会落到「同种 → {@code safeInsert}」或什么都不做，
+         * 交换路径根本进不去。空桶格仍可放（那一条走 {@code safeInsert}，底料按真实名额插入）。</p>
+         */
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            if (!super.mayPlace(stack)) {
+                return false;
+            }
+            var current = getItem();
+            return current.isEmpty() || StorageComponents.isSameKind(current, stack);
         }
 
         @Override
@@ -336,7 +365,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             var current = moduleComponents.kindAt(this.bucketIndex);
             int currentCount = current == null ? 0 : Math.min(current.count(), MAX_REPORTED_COUNT);
             int desired = stack.isEmpty() ? 0 : stack.getCount();
-            if (!stack.isEmpty() && current != null && !ItemStack.isSameItemSameComponents(current.stack(), stack)) {
+            if (!stack.isEmpty() && current != null && !StorageComponents.isSameKind(current.stack(), stack)) {
                 // 原版不会把另一种组件写进同一格（同种的叠放、空的另放），真遇到了只当「不动」：
                 // 照差值硬塞会把两种组件搅进同一格，而这一格只能是一种组件的桶。
                 setChanged();
@@ -622,8 +651,14 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
      * 东西会随结构遍历顺序跳，玩家看到的就是「每次开屏都换个位置」。</p>
      */
     private List<ComponentKind> aggregateKinds(EnergyCellTier tier) {
-        var counts = new LinkedHashMap<Item, Integer>();
-        var representatives = new LinkedHashMap<Item, ItemStack>();
+        // 分组键是「物品 + 数据组件」，不是光看 Item：同一种物品可以带不同的数据组件（邻居模组的变体组件、
+        // 带负载或配置的组件），只看 Item 会把它们并成一格——格子里显示的是先遇到的那个代表栈，取出来时
+        // 又按 Item 匹配（见 uninstallFrom），于是「放进去的是 A、显示成 B、取出来又是 C」。
+        // 不为此另造 Key 类型：一档最多十几种组件，按 Item 取候选下标再做完整比较就够（同种判定统一走
+        // {@link StorageComponents#isSameKind}，与行表计数、取件匹配同一口径）。
+        var indexesByItem = new LinkedHashMap<Item, List<Integer>>();
+        var representatives = new ArrayList<ItemStack>();
+        var counts = new ArrayList<Integer>();
         for (var module : this.host.structureModules()) {
             if (module.tier() != tier) {
                 continue;
@@ -634,14 +669,26 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
                 if (stack.isEmpty()) {
                     continue;
                 }
-                var item = stack.getItem();
-                counts.merge(item, 1, Integer::sum);
-                representatives.putIfAbsent(item, stack.copyWithCount(1));
+                var candidates = indexesByItem.computeIfAbsent(stack.getItem(), item -> new ArrayList<>());
+                int found = -1;
+                for (int index : candidates) {
+                    if (StorageComponents.isSameKind(representatives.get(index), stack)) {
+                        found = index;
+                        break;
+                    }
+                }
+                if (found < 0) {
+                    candidates.add(representatives.size());
+                    representatives.add(stack.copyWithCount(1));
+                    counts.add(1);
+                } else {
+                    counts.set(found, counts.get(found) + 1);
+                }
             }
         }
-        var list = new ArrayList<ComponentKind>(counts.size());
-        for (var entry : counts.entrySet()) {
-            list.add(new ComponentKind(representatives.get(entry.getKey()), entry.getValue()));
+        var list = new ArrayList<ComponentKind>(representatives.size());
+        for (int index = 0; index < representatives.size(); index++) {
+            list.add(new ComponentKind(representatives.get(index), counts.get(index)));
         }
         list.sort(Comparator
                 .comparingLong((ComponentKind kind) -> StorageComponents.magnitudeOf(kind.stack()))
@@ -783,8 +830,34 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
         }
     }
 
-    /** 从该档取出若干个该种组件（按结构顺序取，取完为止）。 */
-    private void uninstallFrom(EnergyCellTier tier, Item item, int count) {
+    /**
+     * 从该档取出若干个「和 {@code prototype} 同一种」的组件（按结构顺序取，取完为止）。
+     *
+     * <p>匹配用 {@link StorageComponents#isSameKind}（内部即 {@code ItemStack.isSameItemSameComponents}），不比
+     * {@code getItem()}：同一种物品可以带不同的数据
+     * 组件，只比 Item 会把另一种变体也当成目标取走——玩家看到的是「取出来的不是格里显示的那件」，底料也会
+     * 少错件（与 {@code aggregateKinds} 的分组口径保持一致）。</p>
+     *
+     * <p><b>但严格匹配可能一件也删不到</b>：聚合缓存（{@code kindsByTier}）只在账目快照变化时重建，而两个数值
+     * 相同、数据组件不同的组件互换时走的是同一条差值路径（差值为 0，stats 不变）——此时缓存里的代表栈与真实
+     * 底料已经不是同一种变体了。若就此收手，原版已经把派生栈交给玩家而底料没动，平空多出一件。所以先严格
+     * 删、不够再按 {@code getItem()} 兜底：宁可删错同物品的变体，也不要留这个复制口。</p>
+     */
+    private void uninstallFrom(EnergyCellTier tier, ItemStack prototype, int count) {
+        int removed = uninstallMatching(tier, prototype, count, true);
+        if (removed < count) {
+            uninstallMatching(tier, prototype, count - removed, false);
+        }
+    }
+
+    /**
+     * 取件的实际扫捕。
+     *
+     * @param sameVariantOnly {@code true} = 只认完全同一种（含数据组件）；{@code false} = 退到同物品（缓存陈旧时的
+     *                        兜底，见 {@link #uninstallFrom}）
+     * @return 实际清掉的件数
+     */
+    private int uninstallMatching(EnergyCellTier tier, ItemStack prototype, int count, boolean sameVariantOnly) {
         int removed = 0;
         for (var module : this.host.structureModules()) {
             if (removed >= count) {
@@ -796,12 +869,18 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             var inventory = module.getInternalInventory();
             for (int slot = 0; slot < inventory.size() && removed < count; slot++) {
                 var stack = inventory.getStackInSlot(slot);
-                if (!stack.isEmpty() && stack.getItem() == item) {
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                boolean matches = sameVariantOnly ? StorageComponents.isSameKind(stack, prototype)
+                        : stack.getItem() == prototype.getItem();
+                if (matches) {
                     inventory.setItemDirect(slot, ItemStack.EMPTY);
                     removed++;
                 }
             }
         }
+        return removed;
     }
 
     /**
@@ -860,7 +939,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
             if (kind == null || row == null) {
                 return;
             }
-            uninstallFrom(row.tier(), kind.stack().getItem(), count);
+            uninstallFrom(row.tier(), kind.stack(), count);
         }
 
         /** 该格对应的聚合条目；客户端、空带、标题行、或该格还没用到时给 {@code null}。 */
@@ -955,7 +1034,7 @@ public class EnergyModuleTerminalMenu extends AEBaseMenu {
                 return ItemStack.EMPTY;
             }
             if (!simulate) {
-                uninstallFrom(rowAt(slot).tier(), kind.stack().getItem(), count);
+                uninstallFrom(rowAt(slot).tier(), kind.stack(), count);
             }
             return kind.stack().copyWithCount(count);
         }

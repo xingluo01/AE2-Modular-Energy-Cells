@@ -17,7 +17,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -1799,9 +1798,12 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             int count = layout.moduleCount();
             var tiers = ModularCellTiers.all();
             int[] moduleCounts = new int[tiers.size()];
-            var kinds = new ArrayList<HashSet<Item>>(tiers.size());
+            // 每档的组件种类：存代表栈而不是 Set<Item>——「一种」的口径是物品 + 数据组件，由
+            // {@link StorageComponents#isSameKind} 钉死。终端那边按同一口径分格与取件，两边数出来的种类数
+            // 必须相等，否则客户端排的行与服务端排的行会错位。
+            var kinds = new ArrayList<List<ItemStack>>(tiers.size());
             for (int index = 0; index < tiers.size(); index++) {
-                kinds.add(new HashSet<>());
+                kinds.add(new ArrayList<>());
             }
             for (int index = 0; index < count; index++) {
                 var tier = tierOfModuleAt(level, layout, index);
@@ -1821,8 +1823,8 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
                 var inventory = module.getInternalInventory();
                 for (int slot = 0; slot < inventory.size(); slot++) {
                     var stack = inventory.getStackInSlot(slot);
-                    if (!stack.isEmpty()) {
-                        kinds.get(slotIndex).add(stack.getItem());
+                    if (!stack.isEmpty() && !containsKind(kinds.get(slotIndex), stack)) {
+                        kinds.get(slotIndex).add(stack.copyWithCount(1));
                     }
                 }
             }
@@ -1833,6 +1835,16 @@ public class EnergyCellModuleBlockEntity extends AENetworkedPoweredBlockEntity
             core.rowCacheStats = core.ownStats;
         }
         return rows;
+    }
+
+    /** 这一档的组件种类里有没有「同一件东西」（口径见 {@link StorageComponents#isSameKind}）。 */
+    private static boolean containsKind(List<ItemStack> kinds, ItemStack stack) {
+        for (var kind : kinds) {
+            if (StorageComponents.isSameKind(kind, stack)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 结构里第 {@code index} 块是哪个等级；那块不在场时给 {@code null}（不排进任何组）。 */

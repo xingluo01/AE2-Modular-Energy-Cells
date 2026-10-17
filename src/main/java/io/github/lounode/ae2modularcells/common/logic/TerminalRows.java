@@ -25,9 +25,10 @@ import io.github.lounode.ae2modularcells.common.ModularCellTiers;
  * <p>分组口径：每个等级一个组（用户口径），组的顺序固定为等级的固定位号顺序（见
  * {@link ModularCellTiers#indexOf}），所以滑动窗口里看到的次序是稳定的——同一档不会因为重算而跳到别处。</p>
  *
- * <p><b>组件行按「已装组件种类数」延伸</b>：一行 12 格，一档装了多少种组件就要多少行，至少一行（空档也留一行，
- * 否则玩家没地方放第一个组件）。于是行表不只取决于结构，还取决于组件内容——组件一变行表就可能变，调用方的
- * 缓存必须按内容失效，不能只挂结构账目。</p>
+ * <p><b>组件行按「已装组件种类数」延伸</b>：一行 12 格，一档装了多少种组件就要多少行，<b>并永远多留一行空位</b>
+ * （空档也有一行，否则玩家没地方放第一个组件；恰好装满 12 的整数倍时同理——桶格只接受「空格或同种」，
+ * 不提前留出空格就拿不到 `mayPlace`，新种类再也放不进去）。于是行表不只取决于结构，还取决于组件内容——
+ * 组件一变行表就可能变，调用方的缓存必须按内容失效，不能只挂结构账目。</p>
  *
  * <p>只算行、不看世界：调用方给两个「按固定位号索引」的函数（这一档有几块、这一档装了几种组件），本类只负责
  * 分组与切块，所以它能单独读懂、也能单独验。</p>
@@ -78,8 +79,9 @@ public final class TerminalRows {
             out.add(Row.title(tier));
             Integer kindsValue = kindsAt.apply(index);
             int kinds = kindsValue == null ? 0 : Math.max(0, kindsValue);
-            // 至少一行：空档也要有 12 个空格子，否则玩家没地方放第一个组件。
-            int lines = Math.max(1, (kinds + SLOTS_PER_ROW - 1) / SLOTS_PER_ROW);
+            // 向上取整后再多留一行：桶格只接受「空格或同种」（见终端菜单的 ComponentBucketSlot#mayPlace），
+            // 恰好装满 12 格时若不延伸，该档就再也放不进新种类——拖拽、左键、shift 快移全被 mayPlace 挡掉。
+            int lines = kinds / SLOTS_PER_ROW + 1;
             for (int line = 0; line < lines; line++) {
                 out.add(Row.slots(tier, line * SLOTS_PER_ROW));
             }
